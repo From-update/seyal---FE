@@ -1,12 +1,35 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Task, TaskStatus, Role, User as UserType, Department } from '../types';
 import { parseCoAssignedTeam } from '../utils/coAssignUtils';
-import { Plus, Calendar, Clock, User, Users, CheckCircle2, AlertCircle, ChevronRight, Filter, Play, Send, RotateCcw, CheckSquare, Edit, Search } from 'lucide-react';
+import {
+  Plus,
+  Calendar,
+  Clock,
+  User,
+  Users,
+  Building,
+  CheckCircle2,
+  AlertCircle,
+  ChevronRight,
+  Filter,
+  Play,
+  Send,
+  RotateCcw,
+  CheckSquare,
+  Edit,
+  Search,
+  X,
+  SlidersHorizontal,
+  Check,
+} from 'lucide-react';
 
 interface NotionListViewProps {
   tasks: Task[];
+  allTasks?: Task[];
   staffList?: UserType[];
   departments?: Department[];
+  selectedDeptId?: number | 'ALL';
+  onSelectDept?: (deptId: number | 'ALL') => void;
   onSelectTask: (task: Task) => void;
   onEditTask?: (task: Task) => void;
   onOpenCreateTask?: () => void;
@@ -20,8 +43,11 @@ interface NotionListViewProps {
 
 export const NotionListView: React.FC<NotionListViewProps> = ({
   tasks,
+  allTasks,
   staffList,
   departments,
+  selectedDeptId,
+  onSelectDept,
   onSelectTask,
   onEditTask,
   onOpenCreateTask,
@@ -35,7 +61,18 @@ export const NotionListView: React.FC<NotionListViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [onlyMyTasks, setOnlyMyTasks] = useState<boolean>(false);
   const [selectedStaffId, setSelectedStaffId] = useState<string>('ALL');
-  const [staffSearchQuery, setStaffSearchQuery] = useState<string>('');
+  const [deptFilter, setDeptFilter] = useState<number | 'ALL'>(selectedDeptId || 'ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Keep department filter synced if selectedDeptId changes externally
+  useEffect(() => {
+    if (selectedDeptId !== undefined) {
+      setDeptFilter(selectedDeptId);
+    }
+  }, [selectedDeptId]);
+
+  // Use the full pool of tasks when available
+  const sourceTasks = allTasks && allTasks.length > 0 ? allTasks : tasks;
 
   // Extract all available staff members from staffList and tasks (including co-assigned team members)
   const availableStaff = useMemo(() => {
@@ -56,7 +93,7 @@ export const NotionListView: React.FC<NotionListViewProps> = ({
     }
 
     // 2. From tasks
-    tasks.forEach((t) => {
+    sourceTasks.forEach((t) => {
       if (t.assigned_to && t.assigned_to_name) {
         if (!map.has(String(t.assigned_to))) {
           map.set(String(t.assigned_to), {
@@ -82,56 +119,173 @@ export const NotionListView: React.FC<NotionListViewProps> = ({
     });
 
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [staffList, tasks]);
+  }, [staffList, sourceTasks]);
 
-  const filteredTasks = tasks.filter((t) => {
-    // 1. My Action Tasks quick toggle
-    if (onlyMyTasks && currentUserId) {
+  // 0. Live count of tasks assigned/co-assigned to the logged-in user
+  const myTasksCount = useMemo(() => {
+    if (!currentUserId) return 0;
+    return sourceTasks.filter((t) => {
+      if (t.assigned_to === currentUserId) return true;
       const { team } = parseCoAssignedTeam(t.description);
-      const isCoAssignedToMe = team.some((m) => String(m.staffId) === String(currentUserId));
-      if (t.assigned_to !== currentUserId && !isCoAssignedToMe) {
-        return false;
+      return team.some((m) => String(m.staffId) === String(currentUserId));
+    }).length;
+  }, [sourceTasks, currentUserId]);
+
+  // Department options with live task counts across all tasks
+  const departmentOptions = useMemo(() => {
+    const map = new Map<string, { id: number | string; name: string; code?: string; taskCount: number }>();
+    if (departments && departments.length > 0) {
+      departments.forEach((d) => {
+        map.set(String(d.id), {
+          id: d.id,
+          name: d.name,
+          code: d.code,
+          taskCount: 0,
+        });
+      });
+    }
+    sourceTasks.forEach((t) => {
+      if (t.department && !map.has(String(t.department))) {
+        map.set(String(t.department), {
+          id: t.department,
+          name: t.department_name || `Dept #${t.department}`,
+          code: t.department_code,
+          taskCount: 0,
+        });
       }
-    }
-
-    // 2. Status Filter
-    if (statusFilter !== 'ALL' && t.status !== statusFilter) {
-      return false;
-    }
-
-    // 3. Staff Filter
-    if (selectedStaffId !== 'ALL') {
       const { team } = parseCoAssignedTeam(t.description);
-      if (selectedStaffId === 'UNASSIGNED') {
-        if (t.assigned_to || team.length > 0) return false;
-      } else {
-        const isPrimary = String(t.assigned_to) === String(selectedStaffId);
-        const selectedObj = availableStaff.find((s) => String(s.id) === String(selectedStaffId));
-        const isCoAssigned = team.some((m) => {
-          if (m.staffId && String(m.staffId) === String(selectedStaffId)) return true;
-          if (selectedObj && m.staffName.toLowerCase() === selectedObj.name.toLowerCase()) return true;
+      team.forEach((m) => {
+        if (m.departmentId && !map.has(String(m.departmentId))) {
+          map.set(String(m.departmentId), {
+            id: m.departmentId,
+            name: m.deptName || `Dept #${m.departmentId}`,
+            code: m.deptCode,
+            taskCount: 0,
+          });
+        }
+      });
+    });
+
+    const isGM = currentUserRole === 'GENERAL_MANAGER' || currentUserRole === 'SUPER_ADMIN';
+    const visibleSource = sourceTasks.filter((t) => {
+      if (!isGM) {
+        if (t.is_gm_own_task || t.department_code === 'GM') return false;
+        const assignee = staffList?.find((s) => s.id === t.assigned_to);
+        if (assignee && (assignee.role === 'GENERAL_MANAGER' || assignee.role === 'SUPER_ADMIN')) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    return Array.from(map.values())
+      .map((d) => {
+        const count = visibleSource.filter((t) => {
+          if (String(t.department) === String(d.id) || Number(t.department) === Number(d.id)) return true;
+          const { team } = parseCoAssignedTeam(t.description);
+          return team.some((m) => {
+            if (String(m.departmentId) === String(d.id) || Number(m.departmentId) === Number(d.id)) return true;
+            if (m.deptName && m.deptName.toLowerCase() === d.name.toLowerCase()) return true;
+            return false;
+          });
+        }).length;
+        return { ...d, taskCount: count };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [departments, sourceTasks, currentUserRole, staffList]);
+
+  // 1. Base scoped tasks: filtered by Dept, Staff, Assigned to Me, and Search Query (everything EXCEPT status)
+  const baseScopedTasks = useMemo(() => {
+    const isGM = currentUserRole === 'GENERAL_MANAGER' || currentUserRole === 'SUPER_ADMIN';
+
+    return sourceTasks.filter((t) => {
+      // GM personal task privacy
+      if (!isGM) {
+        if (t.is_gm_own_task || t.department_code === 'GM') return false;
+        const assignee = staffList?.find((s) => s.id === t.assigned_to);
+        if (assignee && (assignee.role === 'GENERAL_MANAGER' || assignee.role === 'SUPER_ADMIN')) {
+          return false;
+        }
+      }
+
+      // Department filter
+      if (deptFilter !== 'ALL') {
+        const { team } = parseCoAssignedTeam(t.description);
+        const selectedDeptObj = departmentOptions.find((d) => String(d.id) === String(deptFilter));
+        const isPrimaryDept = String(t.department) === String(deptFilter) || Number(t.department) === Number(deptFilter);
+        const isCoAssignedDept = team.some((m) => {
+          if (String(m.departmentId) === String(deptFilter) || Number(m.departmentId) === Number(deptFilter)) return true;
+          if (selectedDeptObj && m.deptName && m.deptName.toLowerCase() === selectedDeptObj.name.toLowerCase()) return true;
           return false;
         });
-        if (!isPrimary && !isCoAssigned) return false;
+        if (!isPrimaryDept && !isCoAssignedDept) return false;
       }
-    }
 
-    // 4. Search query
-    if (staffSearchQuery.trim()) {
-      const q = staffSearchQuery.toLowerCase();
-      const titleMatch = t.title.toLowerCase().includes(q);
-      const descMatch = (t.description || '').toLowerCase().includes(q);
-      const assigneeMatch = (t.assigned_to_name || '').toLowerCase().includes(q);
-      const deptMatch = (t.department_name || t.department_code || '').toLowerCase().includes(q);
-      const { team } = parseCoAssignedTeam(t.description);
-      const coAssigneeMatch = team.some((m) => m.staffName.toLowerCase().includes(q) || (m.deptName && m.deptName.toLowerCase().includes(q)));
-      if (!titleMatch && !descMatch && !assigneeMatch && !deptMatch && !coAssigneeMatch) {
-        return false;
+      // Staff filter
+      if (selectedStaffId !== 'ALL') {
+        const { team } = parseCoAssignedTeam(t.description);
+        if (selectedStaffId === 'UNASSIGNED') {
+          if (t.assigned_to || team.length > 0) return false;
+        } else {
+          const isPrimary = String(t.assigned_to) === String(selectedStaffId);
+          const selectedObj = availableStaff.find((s) => String(s.id) === String(selectedStaffId));
+          const isCoAssigned = team.some((m) => {
+            if (m.staffId && String(m.staffId) === String(selectedStaffId)) return true;
+            if (selectedObj && m.staffName.toLowerCase() === selectedObj.name.toLowerCase()) return true;
+            return false;
+          });
+          if (!isPrimary && !isCoAssigned) return false;
+        }
       }
-    }
 
-    return true;
-  });
+      // Assigned to Me quick toggle
+      if (onlyMyTasks && currentUserId) {
+        const { team } = parseCoAssignedTeam(t.description);
+        const isCoAssignedToMe = team.some((m) => String(m.staffId) === String(currentUserId));
+        if (t.assigned_to !== currentUserId && !isCoAssignedToMe) {
+          return false;
+        }
+      }
+
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const titleMatch = t.title.toLowerCase().includes(q);
+        const descMatch = (t.description || '').toLowerCase().includes(q);
+        const assigneeMatch = (t.assigned_to_name || '').toLowerCase().includes(q);
+        const deptMatch = (t.department_name || t.department_code || '').toLowerCase().includes(q);
+        const { team } = parseCoAssignedTeam(t.description);
+        const coAssigneeMatch = team.some(
+          (m) => m.staffName.toLowerCase().includes(q) || (m.deptName && m.deptName.toLowerCase().includes(q))
+        );
+        if (!titleMatch && !descMatch && !assigneeMatch && !deptMatch && !coAssigneeMatch) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [sourceTasks, currentUserRole, deptFilter, selectedStaffId, onlyMyTasks, currentUserId, searchQuery, staffList, availableStaff]);
+
+  // 2. Dynamic status counts computed strictly from the scoped tasks!
+  const statusCounts = useMemo(() => {
+    return {
+      ALL: baseScopedTasks.length,
+      TODO: baseScopedTasks.filter((t) => t.status === 'TODO').length,
+      IN_PROGRESS: baseScopedTasks.filter((t) => t.status === 'IN_PROGRESS').length,
+      PENDING_GM_APPROVAL: baseScopedTasks.filter((t) => t.status === 'PENDING_GM_APPROVAL').length,
+      CHANGES_REQUESTED: baseScopedTasks.filter((t) => t.status === 'CHANGES_REQUESTED').length,
+      CLOSED: baseScopedTasks.filter((t) => t.status === 'CLOSED').length,
+    };
+  }, [baseScopedTasks]);
+
+  // 3. Final tasks displayed on screen (filtered by active status tab)
+  const finalTasks = useMemo(() => {
+    if (statusFilter === 'ALL') return baseScopedTasks;
+    return baseScopedTasks.filter((t) => t.status === statusFilter);
+  }, [baseScopedTasks, statusFilter]);
+
+  const hasActiveFilters = onlyMyTasks || deptFilter !== 'ALL' || selectedStaffId !== 'ALL' || Boolean(searchQuery.trim());
 
   const getStatusTag = (status: TaskStatus) => {
     switch (status) {
@@ -185,182 +339,490 @@ export const NotionListView: React.FC<NotionListViewProps> = ({
 
   const isGM = currentUserRole === 'GENERAL_MANAGER' || currentUserRole === 'SUPER_ADMIN';
 
+  const handleResetFilters = () => {
+    setOnlyMyTasks(false);
+    setDeptFilter('ALL');
+    if (onSelectDept) onSelectDept('ALL');
+    setSelectedStaffId('ALL');
+    setSearchQuery('');
+    setStatusFilter('ALL');
+  };
+
   return (
     <div style={{ padding: '24px 32px', maxWidth: '1360px', margin: '0 auto' }}>
-      {/* Top Filter Bar: Assigned to Me, Staff Filter Dropdown, Status Pills, Quick Search, New Task */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {/* My Action Tasks Quick Toggle */}
-          <button
-            type="button"
-            onClick={() => setOnlyMyTasks(!onlyMyTasks)}
-            className="notion-btn"
-            style={{
-              fontSize: '12px',
-              padding: '6px 12px',
-              background: onlyMyTasks ? 'var(--notion-blue)' : 'var(--notion-card)',
-              color: onlyMyTasks ? '#ffffff' : 'var(--notion-text)',
-              fontWeight: 700,
-              border: onlyMyTasks ? '1px solid var(--notion-blue)' : '1px solid var(--notion-border)',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: onlyMyTasks ? '0 2px 6px rgba(79, 70, 229, 0.25)' : 'var(--notion-shadow-sm)',
-            }}
-            title="Toggle to view only tasks assigned to me"
-          >
-            <CheckSquare size={13} />
-            <span>Assigned to Me</span>
-          </button>
-
-          <div style={{ width: '1px', height: '20px', background: 'var(--notion-border)', margin: '0 2px' }} />
-
-          {/* Staff Member Filter Dropdown */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              background: selectedStaffId !== 'ALL' ? 'rgba(35, 131, 226, 0.12)' : 'var(--notion-card)',
-              border: selectedStaffId !== 'ALL' ? '1.5px solid var(--notion-blue)' : '1px solid var(--notion-border)',
-              borderRadius: '8px',
-              boxShadow: 'var(--notion-shadow-sm)',
-            }}
-          >
-            <User size={13} style={{ color: selectedStaffId !== 'ALL' ? 'var(--notion-blue)' : 'var(--notion-text-muted)' }} />
-            <span style={{ fontSize: '11.5px', fontWeight: 700, color: selectedStaffId !== 'ALL' ? 'var(--notion-blue)' : 'var(--notion-text-muted)' }}>Staff:</span>
-            <select
-              value={selectedStaffId}
-              onChange={(e) => setSelectedStaffId(e.target.value)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                fontSize: '12px',
-                fontWeight: selectedStaffId !== 'ALL' ? 700 : 500,
-                color: selectedStaffId !== 'ALL' ? 'var(--notion-blue)' : 'var(--notion-text)',
-                cursor: 'pointer',
-                maxWidth: '190px',
-              }}
-            >
-              <option value="ALL">All Staff ({tasks.length})</option>
-              <option value="UNASSIGNED">Unassigned Queue ({tasks.filter(t => !t.assigned_to && parseCoAssignedTeam(t.description).team.length === 0).length})</option>
-              {availableStaff.map((s) => {
-                const staffCount = tasks.filter((t) => {
-                  if (String(t.assigned_to) === String(s.id)) return true;
-                  const { team } = parseCoAssignedTeam(t.description);
-                  return team.some((m) => String(m.staffId) === String(s.id) || m.staffName.toLowerCase() === s.name.toLowerCase());
-                }).length;
-                return (
-                  <option key={String(s.id)} value={String(s.id)}>
-                    {s.name} {s.dept ? `[${s.dept}]` : ''} ({staffCount})
-                  </option>
-                );
-              })}
-            </select>
-            {selectedStaffId !== 'ALL' && (
-              <button
-                type="button"
-                onClick={() => setSelectedStaffId('ALL')}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '0 2px',
-                  cursor: 'pointer',
-                  color: 'var(--notion-blue)',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                }}
-                title="Reset to All Staff"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-
-          <div style={{ width: '1px', height: '20px', background: 'var(--notion-border)', margin: '0 2px' }} />
-
-          {/* Status Pills */}
-          {[
-            { id: 'ALL', label: `All (${tasks.length})` },
-            { id: 'TODO', label: `To Do (${tasks.filter((t) => t.status === 'TODO').length})` },
-            { id: 'IN_PROGRESS', label: `In Progress (${tasks.filter((t) => t.status === 'IN_PROGRESS').length})` },
-            { id: 'PENDING_GM_APPROVAL', label: `In Review (${tasks.filter((t) => t.status === 'PENDING_GM_APPROVAL').length})` },
-            { id: 'CHANGES_REQUESTED', label: `Changes (${tasks.filter((t) => t.status === 'CHANGES_REQUESTED').length})` },
-            { id: 'CLOSED', label: `Completed (${tasks.filter((t) => t.status === 'CLOSED').length})` },
-          ].map((pill) => (
+      {/* Modern High-End Filter & Navigation Bar */}
+      <div
+        style={{
+          background: 'var(--notion-card)',
+          border: '1px solid var(--notion-border)',
+          borderRadius: '14px',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+          marginBottom: '18px',
+          overflow: 'hidden',
+        }}
+      >
+        {/* ROW 1: Controls, Filters & Search */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 18px',
+            flexWrap: 'wrap',
+            gap: '12px',
+            borderBottom: '1px solid var(--notion-border-subtle)',
+          }}
+        >
+          {/* Left Filter Group */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* 1. "Assigned to Me" Quick Toggle */}
             <button
-              key={pill.id}
-              onClick={() => setStatusFilter(pill.id)}
-              className="notion-btn"
+              type="button"
+              onClick={() => setOnlyMyTasks(!onlyMyTasks)}
               style={{
-                fontSize: '11.5px',
-                padding: '4px 10px',
-                background: statusFilter === pill.id ? 'var(--notion-item-bg)' : 'transparent',
-                color: statusFilter === pill.id ? 'var(--notion-blue)' : 'var(--notion-text-muted)',
-                fontWeight: statusFilter === pill.id ? 700 : 500,
-                border: statusFilter === pill.id ? '1px solid var(--notion-border)' : '1px solid transparent',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '7px',
+                padding: '6px 14px',
                 borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                background: onlyMyTasks
+                  ? 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)'
+                  : 'var(--notion-card)',
+                color: onlyMyTasks ? '#ffffff' : 'var(--notion-text)',
+                border: onlyMyTasks ? '1px solid transparent' : '1px solid var(--notion-border)',
+                boxShadow: onlyMyTasks ? '0 2px 8px rgba(79, 70, 229, 0.32)' : 'var(--notion-shadow-sm)',
+              }}
+              title="Toggle to view only tasks assigned to you"
+            >
+              <CheckSquare size={14} style={{ color: onlyMyTasks ? '#ffffff' : 'var(--notion-blue)' }} />
+              <span>Assigned to Me</span>
+              <span
+                style={{
+                  padding: '1px 6px',
+                  borderRadius: '10px',
+                  fontSize: '10.5px',
+                  fontWeight: 700,
+                  background: onlyMyTasks ? 'rgba(255, 255, 255, 0.28)' : 'rgba(35, 131, 226, 0.12)',
+                  color: onlyMyTasks ? '#ffffff' : 'var(--notion-blue)',
+                  marginLeft: '2px',
+                }}
+              >
+                {myTasksCount}
+              </span>
+            </button>
+
+            {/* 2. Department Selector Dropdown */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '5px 10px',
+                borderRadius: '8px',
+                background: deptFilter !== 'ALL' ? 'rgba(124, 58, 237, 0.09)' : 'var(--notion-card)',
+                border: deptFilter !== 'ALL' ? '1.5px solid #8b5cf6' : '1px solid var(--notion-border)',
+                boxShadow: 'var(--notion-shadow-sm)',
+                transition: 'all 0.15s ease',
               }}
             >
-              {pill.label}
-            </button>
-          ))}
-        </div>
+              <Building size={13} style={{ color: deptFilter !== 'ALL' ? '#7c3aed' : 'var(--notion-text-muted)', flexShrink: 0 }} />
+              <span style={{ fontSize: '11.5px', fontWeight: 700, color: deptFilter !== 'ALL' ? '#7c3aed' : 'var(--notion-text-muted)' }}>
+                Dept:
+              </span>
+              <select
+                value={String(deptFilter)}
+                onChange={(e) => {
+                  const val = e.target.value === 'ALL' ? 'ALL' : Number(e.target.value);
+                  setDeptFilter(val);
+                  if (onSelectDept) onSelectDept(val);
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '12px',
+                  fontWeight: deptFilter !== 'ALL' ? 700 : 500,
+                  color: deptFilter !== 'ALL' ? '#7c3aed' : 'var(--notion-text)',
+                  cursor: 'pointer',
+                  maxWidth: '175px',
+                }}
+              >
+                <option value="ALL">All Departments ({sourceTasks.length})</option>
+                {departmentOptions.map((d) => (
+                  <option key={String(d.id)} value={String(d.id)}>
+                    {d.name} ({d.taskCount})
+                  </option>
+                ))}
+              </select>
+              {deptFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeptFilter('ALL');
+                    if (onSelectDept) onSelectDept('ALL');
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#7c3aed',
+                    fontSize: '11px',
+                    padding: '0 2px',
+                    fontWeight: 700,
+                  }}
+                  title="Reset to All Departments"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* Quick Search */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '5px 10px',
-              background: 'var(--notion-card)',
-              border: '1px solid var(--notion-border)',
-              borderRadius: '8px',
-              width: '180px',
-            }}
-          >
-            <Search size={13} style={{ color: 'var(--notion-text-muted)' }} />
-            <input
-              type="text"
-              placeholder="Filter tasks..."
-              value={staffSearchQuery}
-              onChange={(e) => setStaffSearchQuery(e.target.value)}
+            {/* 3. Staff Member Selector Dropdown */}
+            <div
               style={{
-                border: 'none',
-                outline: 'none',
-                background: 'transparent',
-                fontSize: '12px',
-                width: '100%',
-                color: 'var(--notion-text)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '5px 10px',
+                borderRadius: '8px',
+                background: selectedStaffId !== 'ALL' ? 'rgba(35, 131, 226, 0.09)' : 'var(--notion-card)',
+                border: selectedStaffId !== 'ALL' ? '1.5px solid var(--notion-blue)' : '1px solid var(--notion-border)',
+                boxShadow: 'var(--notion-shadow-sm)',
+                transition: 'all 0.15s ease',
               }}
-            />
-            {staffSearchQuery && (
+            >
+              <User size={13} style={{ color: selectedStaffId !== 'ALL' ? 'var(--notion-blue)' : 'var(--notion-text-muted)', flexShrink: 0 }} />
+              <span style={{ fontSize: '11.5px', fontWeight: 700, color: selectedStaffId !== 'ALL' ? 'var(--notion-blue)' : 'var(--notion-text-muted)' }}>
+                Staff:
+              </span>
+              <select
+                value={selectedStaffId}
+                onChange={(e) => setSelectedStaffId(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '12px',
+                  fontWeight: selectedStaffId !== 'ALL' ? 700 : 500,
+                  color: selectedStaffId !== 'ALL' ? 'var(--notion-blue)' : 'var(--notion-text)',
+                  cursor: 'pointer',
+                  maxWidth: '185px',
+                }}
+              >
+                <option value="ALL">All Staff ({sourceTasks.length})</option>
+                <option value="UNASSIGNED">
+                  Unassigned Queue ({sourceTasks.filter(t => !t.assigned_to && parseCoAssignedTeam(t.description).team.length === 0).length})
+                </option>
+                {availableStaff.map((s) => {
+                  const staffCount = sourceTasks.filter((t) => {
+                    if (deptFilter !== 'ALL') {
+                      const { team } = parseCoAssignedTeam(t.description);
+                      const isPrimaryDept = String(t.department) === String(deptFilter) || Number(t.department) === Number(deptFilter);
+                      const isCoAssignedDept = team.some((m) => String(m.departmentId) === String(deptFilter) || Number(m.departmentId) === Number(deptFilter));
+                      if (!isPrimaryDept && !isCoAssignedDept) return false;
+                    }
+                    if (String(t.assigned_to) === String(s.id)) return true;
+                    const { team } = parseCoAssignedTeam(t.description);
+                    return team.some((m) => String(m.staffId) === String(s.id) || m.staffName.toLowerCase() === s.name.toLowerCase());
+                  }).length;
+                  return (
+                    <option key={String(s.id)} value={String(s.id)}>
+                      {s.name} {s.dept ? `[${s.dept}]` : ''} ({staffCount})
+                    </option>
+                  );
+                })}
+              </select>
+              {selectedStaffId !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedStaffId('ALL')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--notion-blue)',
+                    fontSize: '11px',
+                    padding: '0 2px',
+                    fontWeight: 700,
+                  }}
+                  title="Reset to All Staff"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* 4. Reset Filters Button */}
+            {hasActiveFilters && (
               <button
                 type="button"
-                onClick={() => setStaffSearchQuery('')}
-                style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--notion-text-muted)', padding: 0 }}
+                onClick={handleResetFilters}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '5px 11px',
+                  borderRadius: '8px',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  color: '#ef4444',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.28)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Reset all active filters"
               >
-                ✕
+                <X size={12} />
+                <span>Reset Filters</span>
               </button>
             )}
           </div>
 
-          {(canCreateTask !== false && onOpenCreateTask) && (
-            <button
-              onClick={onOpenCreateTask}
-              className="notion-btn notion-btn-primary"
-              style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', gap: '6px', fontWeight: 700 }}
+          {/* Right Group: Search + New Task */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                background: 'var(--notion-item-bg)',
+                border: '1px solid var(--notion-border)',
+                borderRadius: '8px',
+                width: '210px',
+              }}
             >
-              <Plus size={14} />
-              <span>New Task</span>
-            </button>
-          )}
+              <Search size={13} style={{ color: 'var(--notion-text-muted)', flexShrink: 0 }} />
+              <input
+                type="text"
+                placeholder="Filter tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  background: 'transparent',
+                  fontSize: '12px',
+                  width: '100%',
+                  color: 'var(--notion-text)',
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--notion-text-muted)', padding: 0 }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {(canCreateTask !== false && onOpenCreateTask) && (
+              <button
+                onClick={onOpenCreateTask}
+                className="notion-btn notion-btn-primary"
+                style={{
+                  fontSize: '12px',
+                  padding: '7px 15px',
+                  borderRadius: '8px',
+                  gap: '6px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  boxShadow: '0 2px 6px rgba(35, 131, 226, 0.25)',
+                }}
+              >
+                <Plus size={14} />
+                <span>New Task</span>
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* ROW 2: Status Metric Tabs (Accurate Dynamic Counts Based on Active Filters) */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '8px 14px',
+            background: 'rgba(248, 250, 252, 0.6)',
+            overflowX: 'auto',
+            borderBottom: hasActiveFilters ? '1px dashed var(--notion-border-subtle)' : 'none',
+          }}
+        >
+          {[
+            { id: 'ALL', label: 'All Tasks', count: statusCounts.ALL, dotColor: '#6366f1', activeBg: 'rgba(99, 102, 241, 0.12)', activeColor: '#4f46e5' },
+            { id: 'TODO', label: 'To Do', count: statusCounts.TODO, dotColor: '#64748b', activeBg: 'rgba(100, 116, 139, 0.15)', activeColor: '#334155' },
+            { id: 'IN_PROGRESS', label: 'In Progress', count: statusCounts.IN_PROGRESS, dotColor: '#3b82f6', activeBg: 'rgba(59, 130, 246, 0.14)', activeColor: '#2563eb' },
+            { id: 'PENDING_GM_APPROVAL', label: 'In Review', count: statusCounts.PENDING_GM_APPROVAL, dotColor: '#f59e0b', activeBg: 'rgba(245, 158, 11, 0.14)', activeColor: '#d97706' },
+            { id: 'CHANGES_REQUESTED', label: 'Changes', count: statusCounts.CHANGES_REQUESTED, dotColor: '#ef4444', activeBg: 'rgba(239, 68, 68, 0.14)', activeColor: '#dc2626' },
+            { id: 'CLOSED', label: 'Completed', count: statusCounts.CLOSED, dotColor: '#10b981', activeBg: 'rgba(16, 185, 129, 0.14)', activeColor: '#059669' },
+          ].map((tab) => {
+            const isActive = statusFilter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setStatusFilter(tab.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: isActive ? `1.5px solid ${tab.activeColor}` : '1px solid transparent',
+                  background: isActive ? tab.activeBg : 'transparent',
+                  color: isActive ? tab.activeColor : 'var(--notion-text-muted)',
+                  fontWeight: isActive ? 700 : 500,
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.12s ease',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span
+                  style={{
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    backgroundColor: tab.dotColor,
+                    display: 'inline-block',
+                  }}
+                />
+                <span>{tab.label}</span>
+                <span
+                  style={{
+                    padding: '1px 6px',
+                    borderRadius: '10px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    background: isActive ? tab.activeColor : 'rgba(0, 0, 0, 0.06)',
+                    color: isActive ? '#ffffff' : 'var(--notion-text-muted)',
+                    minWidth: '18px',
+                    textAlign: 'center',
+                  }}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ROW 3: Active Filter Chips Bar */}
+        {hasActiveFilters && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 14px',
+              fontSize: '11.5px',
+              background: 'var(--notion-item-bg)',
+              color: 'var(--notion-text-muted)',
+              flexWrap: 'wrap',
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>Active Scope:</span>
+
+            {onlyMyTasks && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 8px',
+                  background: 'rgba(79, 70, 229, 0.12)',
+                  color: '#4f46e5',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+              >
+                Assigned to Me
+                <X size={11} style={{ cursor: 'pointer' }} onClick={() => setOnlyMyTasks(false)} />
+              </span>
+            )}
+
+            {deptFilter !== 'ALL' && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 8px',
+                  background: 'rgba(124, 58, 237, 0.12)',
+                  color: '#7c3aed',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+              >
+                Dept: {departmentOptions.find((d) => String(d.id) === String(deptFilter))?.name || deptFilter}
+                <X
+                  size={11}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    setDeptFilter('ALL');
+                    if (onSelectDept) onSelectDept('ALL');
+                  }}
+                />
+              </span>
+            )}
+
+            {selectedStaffId !== 'ALL' && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 8px',
+                  background: 'rgba(35, 131, 226, 0.12)',
+                  color: 'var(--notion-blue)',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+              >
+                Staff:{' '}
+                {selectedStaffId === 'UNASSIGNED'
+                  ? 'Unassigned Queue'
+                  : availableStaff.find((s) => String(s.id) === String(selectedStaffId))?.name || selectedStaffId}
+                <X size={11} style={{ cursor: 'pointer' }} onClick={() => setSelectedStaffId('ALL')} />
+              </span>
+            )}
+
+            {searchQuery.trim() && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 8px',
+                  background: 'rgba(0, 0, 0, 0.08)',
+                  color: 'var(--notion-text)',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+              >
+                Filter: "{searchQuery.trim()}"
+                <X size={11} style={{ cursor: 'pointer' }} onClick={() => setSearchQuery('')} />
+              </span>
+            )}
+
+            <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--notion-text-dim)' }}>
+              Showing {finalTasks.length} of {baseScopedTasks.length} tasks
+            </span>
+          </div>
+        )}
       </div>
 
       {/* List Container */}
@@ -373,12 +835,23 @@ export const NotionListView: React.FC<NotionListViewProps> = ({
           boxShadow: 'var(--notion-shadow-sm)',
         }}
       >
-        {filteredTasks.length === 0 ? (
-          <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--notion-text-muted)' }}>
-            <p style={{ margin: 0, fontSize: '13px' }}>No tasks in this view.</p>
+        {finalTasks.length === 0 ? (
+          <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--notion-text-muted)' }}>
+            <Filter size={24} style={{ opacity: 0.4, marginBottom: '8px' }} />
+            <p style={{ margin: '0 0 6px 0', fontSize: '13.5px', fontWeight: 600 }}>No tasks in this view</p>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="notion-btn notion-btn-bordered"
+                style={{ fontSize: '11.5px', padding: '4px 10px', marginTop: '6px' }}
+              >
+                Clear all filters
+              </button>
+            )}
           </div>
         ) : (
-          filteredTasks.map((task) => (
+          finalTasks.map((task) => (
             <div
               key={task.id}
               onClick={() => onSelectTask(task)}
