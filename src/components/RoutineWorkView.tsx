@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { User, Department, Priority, RoutineFrequency, RoutineWorkItem, RoutineWorkLog } from '../types';
+import { api } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import {
   ListChecks,
@@ -27,6 +28,7 @@ import {
   ShieldCheck,
   Tag,
   SlidersHorizontal,
+  RefreshCw,
 } from 'lucide-react';
 
 interface RoutineWorkViewProps {
@@ -36,299 +38,8 @@ interface RoutineWorkViewProps {
   onOpenCreateTask?: (prefill?: { title?: string; description?: string; department?: number; priority?: Priority }) => void;
 }
 
-const STORAGE_KEY = 'nextup_routine_work_items_v2';
-const LOGS_STORAGE_KEY = 'nextup_routine_work_logs_v2';
-
-// Standard institutional templates pre-loaded for Rathinam Group
-const INITIAL_ROUTINE_ITEMS: RoutineWorkItem[] = [
-  // DAILY CHECKLISTS
-  {
-    id: 'daily_1',
-    title: 'Campus Water Pumps, Overhead Tank Levels & Pressure Check',
-    description: 'Check ground sump levels, turn on primary pump, verify overhead tank sensors and pressure meters read at least 2.5 bar across all hostel blocks and academic buildings.',
-    frequency: 'DAILY',
-    department: 1,
-    department_code: 'CIVIL',
-    department_name: 'Civil & Facilities',
-    assigned_to: 1,
-    assigned_to_name: 'Campus Facilities Team',
-    priority: 'HIGH',
-    target_time: '08:30 AM Daily',
-    is_active: true,
-  },
-  {
-    id: 'daily_2',
-    title: 'Main Data Center & Server Switch Room Temperature & Network Uplink Check',
-    description: 'Inspect rack servers, core switches, server room AC status (must be maintained at 18-21°C), verify primary 1Gbps internet uplink, firewall throughput and UPS battery charge.',
-    frequency: 'DAILY',
-    department: 2,
-    department_code: 'IT',
-    department_name: 'IT Services',
-    assigned_to: 2,
-    assigned_to_name: 'IT Infrastructure Admin',
-    priority: 'URGENT',
-    target_time: '09:00 AM Daily',
-    is_active: true,
-  },
-  {
-    id: 'daily_3',
-    title: 'Computer Labs & Smart Classroom Power-up & AV Projector Inspection',
-    description: 'Turn on main lab power distribution, test 2 random projectors and audio amplifiers, ensure wireless mic batteries are charged and LAN connections are working for morning lectures.',
-    frequency: 'DAILY',
-    department: 2,
-    department_code: 'IT',
-    department_name: 'IT Services',
-    assigned_to: 2,
-    assigned_to_name: 'Lab Technical Staff',
-    priority: 'MEDIUM',
-    target_time: '09:15 AM Daily',
-    is_active: true,
-  },
-  {
-    id: 'daily_4',
-    title: 'Student Hostels Common Area Sanitization & Mess Kitchen Hygiene Audit',
-    description: 'Inspect dining hall cleanliness, food storage temperature, RO drinking water coolers, food waste disposal bins, and record dining area hygiene compliance ledger.',
-    frequency: 'DAILY',
-    department: 3,
-    department_code: 'HOSTEL',
-    department_name: 'Hostel Administration',
-    assigned_to: 3,
-    assigned_to_name: 'Hostel Warden',
-    priority: 'HIGH',
-    target_time: '10:00 AM Daily',
-    is_active: true,
-  },
-  {
-    id: 'daily_5',
-    title: 'Standby Diesel Generator (DG) Fuel Gauge, Battery & AMF Panel Readiness',
-    description: 'Check diesel tank level (must be above 75%), check 24V starter battery terminal voltage, test Auto-Mains Failure (AMF) panel selector switch in auto mode.',
-    frequency: 'DAILY',
-    department: 4,
-    department_code: 'ELEC',
-    department_name: 'Electrical Maintenance',
-    assigned_to: 4,
-    assigned_to_name: 'Electrical Engineer',
-    priority: 'URGENT',
-    target_time: '04:30 PM Daily',
-    is_active: true,
-  },
-  {
-    id: 'daily_6',
-    title: 'Campus Perimeter Security Log, CCTV Live Feeds & Night Patrol Handover',
-    description: 'Review all 64 CCTV cameras, log visitor vehicles, inspect main entrance and rear gates, handover night patrol walkie-talkies and security ledger.',
-    frequency: 'DAILY',
-    department: 5,
-    department_code: 'ADMIN',
-    department_name: 'Campus Security',
-    assigned_to: 5,
-    assigned_to_name: 'Chief Security Officer',
-    priority: 'HIGH',
-    target_time: '06:00 PM Daily',
-    is_active: true,
-  },
-
-  // WEEKLY CHECKLISTS
-  {
-    id: 'weekly_1',
-    title: 'Enterprise Database & Cloud Cold-Storage Automated Backup Verification',
-    description: 'Validate integrity of Sunday night database dumps, verify SHA-256 hash checksums, and confirm automated replication to off-site cloud storage bucket.',
-    frequency: 'WEEKLY',
-    department: 2,
-    department_code: 'IT',
-    department_name: 'IT Services',
-    assigned_to: 2,
-    assigned_to_name: 'Database Administrator',
-    priority: 'URGENT',
-    target_time: 'Every Monday 10:00 AM',
-    is_active: true,
-  },
-  {
-    id: 'weekly_2',
-    title: 'Campus Central RO Water Purifiers Filter Backwash & TDS Testing',
-    description: 'Perform scheduled backwash on dual-media sand and activated carbon filters, measure input & output TDS with digital meter (target: 80-120 PPM), record in maintenance log.',
-    frequency: 'WEEKLY',
-    department: 1,
-    department_code: 'CIVIL',
-    department_name: 'Civil & Facilities',
-    assigned_to: 1,
-    assigned_to_name: 'Water Treatment Supervisor',
-    priority: 'HIGH',
-    target_time: 'Every Tuesday 11:00 AM',
-    is_active: true,
-  },
-  {
-    id: 'weekly_3',
-    title: 'College Fleet & Transport Buses Mechanical Safety Inspection',
-    description: 'Inspect tire tread depth, brake fluid reservoir, steering play, functional first-aid kits, fire extinguishers, and emergency exit doors across all operational college buses.',
-    frequency: 'WEEKLY',
-    department: 6,
-    department_code: 'TRANS',
-    department_name: 'Transport Department',
-    assigned_to: 6,
-    assigned_to_name: 'Transport Manager',
-    priority: 'HIGH',
-    target_time: 'Every Wednesday 08:30 AM',
-    is_active: true,
-  },
-  {
-    id: 'weekly_4',
-    title: 'Academic Chemistry & Engineering Labs Safety Audit & Waste Neutralization',
-    description: 'Inspect emergency eyewash stations, acid-fume hoods, chemical neutralization pits, and verify that all volatile reagent bottles are secured with GHS labels.',
-    frequency: 'WEEKLY',
-    department: 7,
-    department_code: 'LABS',
-    department_name: 'Academic Labs',
-    assigned_to: 7,
-    assigned_to_name: 'Lab In-Charge',
-    priority: 'MEDIUM',
-    target_time: 'Every Thursday 03:00 PM',
-    is_active: true,
-  },
-  {
-    id: 'weekly_5',
-    title: 'Department Heads Weekly Work Review & Pending Action Items Briefing',
-    description: 'Review weekly task completion velocity, audit pending GM approvals, address blockers, and publish aligned priority deliverables for the upcoming academic week.',
-    frequency: 'WEEKLY',
-    department: 8,
-    department_code: 'GM',
-    department_name: 'General Management',
-    assigned_to: 8,
-    assigned_to_name: 'GM Executive Office',
-    priority: 'HIGH',
-    target_time: 'Every Friday 04:00 PM',
-    is_active: true,
-  },
-
-  // MONTHLY CHECKLISTS
-  {
-    id: 'monthly_1',
-    title: 'Campus Fire Fighting System, Hydrant Pumps & Extinguisher Pressure Testing',
-    description: 'Inspect pressure gauges on all ABC dry powder & CO2 extinguishers, verify automatic starting of main jockey pump upon hydrant valve release, test smoke alarm annunciator panels.',
-    frequency: 'MONTHLY',
-    department: 5,
-    department_code: 'ADMIN',
-    department_name: 'Safety & Security',
-    assigned_to: 5,
-    assigned_to_name: 'Fire Safety Officer',
-    priority: 'URGENT',
-    target_time: '1st of every month',
-    is_active: true,
-  },
-  {
-    id: 'monthly_2',
-    title: 'Central Air Conditioning Chillers, Air Handling Units (AHU) & Filter Deep Clean',
-    description: 'Wash and deep clean all AHU pre-filters, inspect condenser fans and motor belts, verify refrigerant suction/discharge pressures, grease motor bearings.',
-    frequency: 'MONTHLY',
-    department: 4,
-    department_code: 'ELEC',
-    department_name: 'HVAC & Electrical',
-    assigned_to: 4,
-    assigned_to_name: 'HVAC Specialist',
-    priority: 'HIGH',
-    target_time: '5th of every month',
-    is_active: true,
-  },
-  {
-    id: 'monthly_3',
-    title: 'High Tension (HT) Substation Transformer Oil Breakdown Voltage & Earth Pit Test',
-    description: 'Measure earth pit resistance with earth tester (must be strictly < 1.0 Ohm), inspect silica gel breather color (blue), record HT transformer primary/secondary voltage logs.',
-    frequency: 'MONTHLY',
-    department: 4,
-    department_code: 'ELEC',
-    department_name: 'Electrical Maintenance',
-    assigned_to: 4,
-    assigned_to_name: 'Senior Electrical Engineer',
-    priority: 'URGENT',
-    target_time: '10th of every month',
-    is_active: true,
-  },
-  {
-    id: 'monthly_4',
-    title: 'Institutional Software Licenses, Domain Names & SSL Certificate Expiry Audit',
-    description: 'Verify SSL certificate renewal schedules on all college domains and subdomains, audit active Microsoft/Google Workspace educational seat licenses, apply OS security updates.',
-    frequency: 'MONTHLY',
-    department: 2,
-    department_code: 'IT',
-    department_name: 'IT Services',
-    assigned_to: 2,
-    assigned_to_name: 'IT Lead',
-    priority: 'HIGH',
-    target_time: '15th of every month',
-    is_active: true,
-  },
-  {
-    id: 'monthly_5',
-    title: 'Departmental Consumables Inventory Audit & Asset Physical Verification',
-    description: 'Reconcile stock register with physical stock for office stationery, lab testing kits, maintenance spares, and submit inventory variances to the GM desk.',
-    frequency: 'MONTHLY',
-    department: 5,
-    department_code: 'ADMIN',
-    department_name: 'Accounts & Store',
-    assigned_to: 5,
-    assigned_to_name: 'Store Officer',
-    priority: 'MEDIUM',
-    target_time: '28th of every month',
-    is_active: true,
-  },
-
-  // YEARLY CHECKLISTS
-  {
-    id: 'yearly_1',
-    title: 'Annual Laboratory Testing Equipment Calibration & Accuracy Certification',
-    description: 'Engage accredited NABL calibration agency to test and certify universal testing machines, digital oscilloscopes, analytical balances, and issue NABL master compliance certificates.',
-    frequency: 'YEARLY',
-    department: 7,
-    department_code: 'LABS',
-    department_name: 'Academic Labs',
-    assigned_to: 7,
-    assigned_to_name: 'Lab Coordinator',
-    priority: 'HIGH',
-    target_time: 'January Annual Cycle',
-    is_active: true,
-  },
-  {
-    id: 'yearly_2',
-    title: 'Campus Passenger Lifts & Building Structural Fitness NOC Renewal',
-    description: 'Complete annual elevator statutory safety inspection with government electrical inspectorate, renew operating licenses, and verify emergency descent battery backup systems.',
-    frequency: 'YEARLY',
-    department: 1,
-    department_code: 'CIVIL',
-    department_name: 'Civil & Facilities',
-    assigned_to: 1,
-    assigned_to_name: 'Estate Officer',
-    priority: 'URGENT',
-    target_time: 'April Annual Cycle',
-    is_active: true,
-  },
-  {
-    id: 'yearly_3',
-    title: 'Internal Quality Assurance Cell (IQAC) NAAC & NBA Annual Compliance Review',
-    description: 'Consolidate annual faculty research publications, patents, campus placement statistics, curriculum delivery metrics, and update institutional quality criteria files.',
-    frequency: 'YEARLY',
-    department: 8,
-    department_code: 'GM',
-    department_name: 'Quality Assurance Cell',
-    assigned_to: 8,
-    assigned_to_name: 'IQAC Director',
-    priority: 'URGENT',
-    target_time: 'June Annual Cycle',
-    is_active: true,
-  },
-  {
-    id: 'yearly_4',
-    title: 'Comprehensive Campus Infrastructure, Fleet & Student Health Insurance Audit',
-    description: 'Review institutional asset valuation, building fire and natural disaster insurance policies, student group accidental cover, and execute annual premium renewal.',
-    frequency: 'YEARLY',
-    department: 5,
-    department_code: 'ADMIN',
-    department_name: 'Administration & Legal',
-    assigned_to: 5,
-    assigned_to_name: 'Administrative Registrar',
-    priority: 'HIGH',
-    target_time: 'December Annual Cycle',
-    is_active: true,
-  },
-];
+const LOCAL_STORAGE_BACKUP_KEY = 'nextup_routine_items_cache';
+const LOCAL_STORAGE_LOGS_KEY = 'nextup_routine_logs_cache';
 
 // Helper to calculate period identifiers
 const getPeriodIdentifier = (frequency: RoutineFrequency): string => {
@@ -341,7 +52,6 @@ const getPeriodIdentifier = (frequency: RoutineFrequency): string => {
     case 'DAILY':
       return `${year}-${month}-${day}`;
     case 'WEEKLY': {
-      // ISO week calculation
       const tempDate = new Date(now.getTime());
       tempDate.setHours(0, 0, 0, 0);
       tempDate.setDate(tempDate.getDate() + 3 - ((tempDate.getDay() + 6) % 7));
@@ -366,7 +76,7 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
 }) => {
   const { isTamil } = useLanguage();
 
-  // Active frequency tab: 'ALL' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'
+  // Active frequency tab: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'ALL'
   const [activeFrequency, setActiveFrequency] = useState<string>('DAILY');
 
   // Filters
@@ -376,41 +86,65 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Items and logs loaded from localStorage (or defaults)
-  const [items, setItems] = useState<RoutineWorkItem[]>(() => {
+  // Items and logs loaded pure from DB
+  const [items, setItems] = useState<RoutineWorkItem[]>([]);
+  const [logs, setLogs] = useState<RoutineWorkLog[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);
+
+  // Load from DB tables via API
+  const loadRoutineData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setErrorNotice(null);
+
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      const [fetchedItems, fetchedLogs] = await Promise.all([
+        api.getRoutineItems().catch(() => null),
+        api.getRoutineLogs().catch(() => null),
+      ]);
+
+      if (fetchedItems && Array.isArray(fetchedItems)) {
+        setItems(fetchedItems);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_BACKUP_KEY, JSON.stringify(fetchedItems));
+        } catch {}
+      } else {
+        // Fallback to cache if server is offline
+        try {
+          const cached = localStorage.getItem(LOCAL_STORAGE_BACKUP_KEY);
+          if (cached) setItems(JSON.parse(cached));
+        } catch {}
       }
-    } catch {}
-    return INITIAL_ROUTINE_ITEMS;
-  });
 
-  const [logs, setLogs] = useState<RoutineWorkLog[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOGS_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+      if (fetchedLogs && Array.isArray(fetchedLogs)) {
+        setLogs(fetchedLogs);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_LOGS_KEY, JSON.stringify(fetchedLogs));
+        } catch {}
+      } else {
+        try {
+          const cachedLogs = localStorage.getItem(LOCAL_STORAGE_LOGS_KEY);
+          if (cachedLogs) setLogs(JSON.parse(cachedLogs));
+        } catch {}
       }
-    } catch {}
-    return [];
-  });
+    } catch (err: any) {
+      console.warn('Routine API call:', err);
+      // Read local cache if network/API temporarily unavailable
+      try {
+        const cached = localStorage.getItem(LOCAL_STORAGE_BACKUP_KEY);
+        if (cached) setItems(JSON.parse(cached));
+      } catch {}
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  // Save to localStorage whenever items or logs change
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch {}
-  }, [items]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(logs));
-    } catch {}
-  }, [logs]);
+    loadRoutineData();
+  }, [loadRoutineData]);
 
   // Modal State for Add / Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -422,8 +156,9 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
   const [formAssignee, setFormAssignee] = useState<number | ''>('');
   const [formPriority, setFormPriority] = useState<Priority>('MEDIUM');
   const [formTargetTime, setFormTargetTime] = useState('');
+  const [savingItem, setSavingItem] = useState(false);
 
-  // Expandable description state
+  // Expandable SOP accordion state
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
 
   const toggleExpand = (id: string | number) => {
@@ -433,7 +168,7 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
   // Helper to check if an item is completed for its current cycle
   const isItemCompletedCurrentCycle = (item: RoutineWorkItem): { completed: boolean; log?: RoutineWorkLog } => {
     const period = getPeriodIdentifier(item.frequency);
-    const foundLog = logs.find((l) => String(l.item_id) === String(item.id) && l.period_identifier === period);
+    const foundLog = logs.find((l) => String(l.item_id || (l as any).item) === String(item.id) && l.period_identifier === period);
     if (foundLog) {
       return { completed: true, log: foundLog };
     }
@@ -443,29 +178,23 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
     return { completed: false };
   };
 
-  // Toggle completion
-  const handleToggleComplete = (item: RoutineWorkItem) => {
+  // Toggle completion -> Save in DB table
+  const handleToggleComplete = async (item: RoutineWorkItem) => {
     const period = getPeriodIdentifier(item.frequency);
     const { completed } = isItemCompletedCurrentCycle(item);
 
+    // Optimistic UI update
     if (completed) {
-      // Revert to pending: remove log for this period
-      setLogs((prev) => prev.filter((l) => !(String(l.item_id) === String(item.id) && l.period_identifier === period)));
+      setLogs((prev) => prev.filter((l) => !(String(l.item_id || (l as any).item) === String(item.id) && l.period_identifier === period)));
       setItems((prev) =>
         prev.map((i) => {
           if (String(i.id) === String(item.id)) {
-            return {
-              ...i,
-              last_completed_at: null,
-              last_completed_by: null,
-              last_completed_by_name: undefined,
-            };
+            return { ...i, last_completed_at: null, last_completed_by: null, last_completed_by_name: undefined };
           }
           return i;
         })
       );
     } else {
-      // Mark completed: create new log
       const nowIso = new Date().toISOString();
       const newLog: RoutineWorkLog = {
         id: `log_${Date.now()}`,
@@ -475,7 +204,6 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
         completed_at: nowIso,
         period_identifier: period,
       };
-
       setLogs((prev) => [newLog, ...prev]);
       setItems((prev) =>
         prev.map((i) => {
@@ -491,6 +219,18 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
         })
       );
     }
+
+    // Call API to persist in database table
+    try {
+      await api.toggleCompleteRoutineItem(item.id, period);
+    } catch (err: any) {
+      console.warn('Persist completion to DB failed, updating local store:', err);
+      // Persist in local storage
+      try {
+        localStorage.setItem(LOCAL_STORAGE_BACKUP_KEY, JSON.stringify(items));
+        localStorage.setItem(LOCAL_STORAGE_LOGS_KEY, JSON.stringify(logs));
+      } catch {}
+    }
   };
 
   // Open Create Modal
@@ -504,12 +244,12 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
     setFormPriority('MEDIUM');
     setFormTargetTime(
       freq === 'DAILY'
-        ? '09:00 AM Daily'
+        ? '09:00 AM'
         : freq === 'WEEKLY'
-        ? 'Every Monday 10:00 AM'
+        ? 'Every Monday'
         : freq === 'MONTHLY'
-        ? '1st of every month'
-        : 'January Annual Cycle'
+        ? '1st of month'
+        : 'January'
     );
     setIsModalOpen(true);
   };
@@ -527,65 +267,84 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
     setIsModalOpen(true);
   };
 
-  // Save Modal
-  const handleSaveModal = (e: React.FormEvent) => {
+  // Save Modal -> Save in DB table
+  const handleSaveModal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTitle.trim()) return;
 
+    setSavingItem(true);
     const deptObj = departments.find((d) => d.id === Number(formDept));
     const staffObj = staffList?.find((s) => s.id === Number(formAssignee));
 
-    if (editingItem) {
-      setItems((prev) =>
-        prev.map((i) => {
-          if (String(i.id) === String(editingItem.id)) {
-            return {
-              ...i,
-              title: formTitle.trim(),
-              description: formDesc.trim(),
-              frequency: formFrequency,
-              department: formDept ? Number(formDept) : null,
-              department_name: deptObj?.name || i.department_name,
-              department_code: deptObj?.code || i.department_code,
-              assigned_to: formAssignee ? Number(formAssignee) : null,
-              assigned_to_name: staffObj?.full_name || i.assigned_to_name,
-              priority: formPriority,
-              target_time: formTargetTime.trim(),
-              updated_at: new Date().toISOString(),
-            };
-          }
-          return i;
-        })
-      );
-    } else {
-      const newItem: RoutineWorkItem = {
-        id: `routine_${Date.now()}`,
-        title: formTitle.trim(),
-        description: formDesc.trim(),
-        frequency: formFrequency,
-        department: formDept ? Number(formDept) : null,
-        department_name: deptObj?.name,
-        department_code: deptObj?.code,
-        assigned_to: formAssignee ? Number(formAssignee) : null,
-        assigned_to_name: staffObj?.full_name,
-        created_by: currentUser.id,
-        created_by_name: currentUser.full_name || currentUser.username,
-        priority: formPriority,
-        target_time: formTargetTime.trim(),
-        is_active: true,
-        created_at: new Date().toISOString(),
-      };
-      setItems((prev) => [newItem, ...prev]);
-    }
+    const payload: Partial<RoutineWorkItem> = {
+      title: formTitle.trim(),
+      description: formDesc.trim(),
+      frequency: formFrequency,
+      department: formDept ? Number(formDept) : null,
+      assigned_to: formAssignee ? Number(formAssignee) : null,
+      priority: formPriority,
+      target_time: formTargetTime.trim(),
+      is_active: true,
+    };
 
-    setIsModalOpen(false);
+    try {
+      if (editingItem) {
+        // Update in DB
+        const updated = await api.updateRoutineItem(editingItem.id, payload).catch(() => null);
+        const savedItem: RoutineWorkItem = updated || {
+          ...editingItem,
+          ...payload,
+          department_name: deptObj?.name || editingItem.department_name,
+          department_code: deptObj?.code || editingItem.department_code,
+          assigned_to_name: staffObj?.full_name || editingItem.assigned_to_name,
+          updated_at: new Date().toISOString(),
+        };
+        setItems((prev) => prev.map((i) => (String(i.id) === String(editingItem.id) ? savedItem : i)));
+      } else {
+        // Create in DB
+        const created = await api.createRoutineItem(payload).catch(() => null);
+        const newItem: RoutineWorkItem = created || {
+          id: `routine_${Date.now()}`,
+          title: formTitle.trim(),
+          description: formDesc.trim(),
+          frequency: formFrequency,
+          department: formDept ? Number(formDept) : null,
+          department_name: deptObj?.name,
+          department_code: deptObj?.code,
+          assigned_to: formAssignee ? Number(formAssignee) : null,
+          assigned_to_name: staffObj?.full_name,
+          created_by: currentUser.id,
+          created_by_name: currentUser.full_name || currentUser.username,
+          priority: formPriority,
+          target_time: formTargetTime.trim(),
+          is_active: true,
+          created_at: new Date().toISOString(),
+        };
+        setItems((prev) => [newItem, ...prev]);
+      }
+
+      setIsModalOpen(false);
+    } catch (err: any) {
+      alert(`Failed to save routine checklist item: ${err.message}`);
+    } finally {
+      setSavingItem(false);
+    }
   };
 
-  // Delete item
-  const handleDeleteItem = (id: string | number) => {
-    if (window.confirm('Are you sure you want to remove this routine checklist item?')) {
-      setItems((prev) => prev.filter((i) => String(i.id) !== String(id)));
-      setLogs((prev) => prev.filter((l) => String(l.item_id) !== String(id)));
+  // Delete item from DB
+  const handleDeleteItem = async (id: string | number) => {
+    if (!window.confirm('Are you sure you want to delete this routine checklist item from the database?')) {
+      return;
+    }
+
+    // Optimistic removal
+    setItems((prev) => prev.filter((i) => String(i.id) !== String(id)));
+    setLogs((prev) => prev.filter((l) => String(l.item_id || (l as any).item) !== String(id)));
+
+    try {
+      await api.deleteRoutineItem(id);
+    } catch (err: any) {
+      console.warn('Delete in DB failed, updated locally:', err);
     }
   };
 
@@ -593,29 +352,19 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
   const handleLogIssueAsTask = (item: RoutineWorkItem) => {
     if (onOpenCreateTask) {
       onOpenCreateTask({
-        title: `[Routine Anomaly]: ${item.title}`,
-        description: `⚠️ Issue reported during routine check (${item.frequency.toLowerCase()} cycle):\n\nSOP Reference: ${item.description}\nTarget Schedule: ${item.target_time}\nReported by: ${currentUser.full_name || currentUser.username} on ${new Date().toLocaleDateString()}\n\nDefect Details / Observations:\n`,
+        title: `[Routine Defect]: ${item.title}`,
+        description: `⚠️ Anomaly / Defect spotted during routine checklist check (${item.frequency.toLowerCase()} cycle):\n\nSOP Procedure: ${item.description}\nSchedule: ${item.target_time}\nReported by: ${currentUser.full_name || currentUser.username} on ${new Date().toLocaleDateString()}\n\nDefect Observations:\n`,
         department: item.department || undefined,
         priority: 'HIGH',
       });
     } else {
-      alert(`To log this issue as a task, please use the '+ New Task' button at the top and reference: ${item.title}`);
+      alert(`To log this issue as a task, please click '+ New Task' at the top and reference: ${item.title}`);
     }
   };
 
-  // Print / Export
+  // Print
   const handlePrint = () => {
     window.print();
-  };
-
-  // Reset to default templates
-  const handleResetToDefaults = () => {
-    if (window.confirm('Reset checklist to standard Rathinam institutional templates? Any custom additions will be refreshed.')) {
-      setItems(INITIAL_ROUTINE_ITEMS);
-      setLogs([]);
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(LOGS_STORAGE_KEY);
-    }
   };
 
   // Computed Scoped Items
@@ -759,12 +508,12 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
             </div>
             <div>
               <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--notion-text)', letterSpacing: '-0.02em' }}>
-                {isTamil ? 'வழக்கமான பணி சரிபார்ப்பு பட்டியல்' : 'Routine Work Checklists'}
+                {isTamil ? 'வழக்கமான பணிகள் சரிபார்ப்பு பட்டியல்' : 'Routine Work Checklists'}
               </h1>
               <p style={{ margin: '3px 0 0 0', fontSize: '12.5px', color: 'var(--notion-text-muted)' }}>
                 {isTamil
-                  ? 'தினசரி, வாராந்திர, மாதாந்திர மற்றும் வருடாந்திர செயல்பாட்டு சரிபார்ப்புகள்'
-                  : 'Daily, Weekly, Monthly, and Yearly standard operating procedures (SOP) across institutional departments'}
+                  ? 'தினசரி, வாராந்திர, மாதாந்திர மற்றும் வருடாந்திர செயல்பாட்டு சரிபார்ப்புகள் (DB சேமிப்பு)'
+                  : 'Daily, Weekly, Monthly, and Yearly operational checklists directly connected to database'}
               </p>
             </div>
           </div>
@@ -774,6 +523,18 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             type="button"
+            onClick={() => loadRoutineData(true)}
+            className="notion-btn notion-btn-bordered"
+            style={{ fontSize: '12px', padding: '7px 12px', borderRadius: '8px', gap: '6px' }}
+            title="Refresh database records"
+            disabled={refreshing}
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+            <span>{refreshing ? 'Refreshing...' : 'Refresh DB'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handlePrint}
             className="notion-btn notion-btn-bordered"
             style={{ fontSize: '12px', padding: '7px 12px', borderRadius: '8px', gap: '6px' }}
@@ -781,17 +542,6 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
           >
             <Printer size={13} />
             <span>Print Report</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleResetToDefaults}
-            className="notion-btn notion-btn-bordered"
-            style={{ fontSize: '12px', padding: '7px 12px', borderRadius: '8px', gap: '6px', color: 'var(--notion-text-muted)' }}
-            title="Reset to default Rathinam checklist templates"
-          >
-            <RotateCcw size={13} />
-            <span>Templates</span>
           </button>
 
           <button
@@ -843,8 +593,8 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                 fontWeight: 700,
                 padding: '1px 7px',
                 borderRadius: '10px',
-                background: stats.DAILY.percent === 100 ? '#10b981' : 'rgba(59, 130, 246, 0.12)',
-                color: stats.DAILY.percent === 100 ? '#ffffff' : '#2563eb',
+                background: stats.DAILY.total > 0 && stats.DAILY.percent === 100 ? '#10b981' : 'rgba(59, 130, 246, 0.12)',
+                color: stats.DAILY.total > 0 && stats.DAILY.percent === 100 ? '#ffffff' : '#2563eb',
               }}
             >
               {stats.DAILY.percent}% Done
@@ -879,8 +629,8 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                 fontWeight: 700,
                 padding: '1px 7px',
                 borderRadius: '10px',
-                background: stats.WEEKLY.percent === 100 ? '#10b981' : 'rgba(16, 185, 129, 0.12)',
-                color: stats.WEEKLY.percent === 100 ? '#ffffff' : '#059669',
+                background: stats.WEEKLY.total > 0 && stats.WEEKLY.percent === 100 ? '#10b981' : 'rgba(16, 185, 129, 0.12)',
+                color: stats.WEEKLY.total > 0 && stats.WEEKLY.percent === 100 ? '#ffffff' : '#059669',
               }}
             >
               {stats.WEEKLY.percent}% Done
@@ -915,8 +665,8 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                 fontWeight: 700,
                 padding: '1px 7px',
                 borderRadius: '10px',
-                background: stats.MONTHLY.percent === 100 ? '#10b981' : 'rgba(139, 92, 246, 0.12)',
-                color: stats.MONTHLY.percent === 100 ? '#ffffff' : '#7c3aed',
+                background: stats.MONTHLY.total > 0 && stats.MONTHLY.percent === 100 ? '#10b981' : 'rgba(139, 92, 246, 0.12)',
+                color: stats.MONTHLY.total > 0 && stats.MONTHLY.percent === 100 ? '#ffffff' : '#7c3aed',
               }}
             >
               {stats.MONTHLY.percent}% Done
@@ -951,8 +701,8 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                 fontWeight: 700,
                 padding: '1px 7px',
                 borderRadius: '10px',
-                background: stats.YEARLY.percent === 100 ? '#10b981' : 'rgba(245, 158, 11, 0.14)',
-                color: stats.YEARLY.percent === 100 ? '#ffffff' : '#d97706',
+                background: stats.YEARLY.total > 0 && stats.YEARLY.percent === 100 ? '#10b981' : 'rgba(245, 158, 11, 0.14)',
+                color: stats.YEARLY.total > 0 && stats.YEARLY.percent === 100 ? '#ffffff' : '#d97706',
               }}
             >
               {stats.YEARLY.percent}% Done
@@ -1271,21 +1021,28 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
           boxShadow: 'var(--notion-shadow-sm)',
         }}
       >
-        {filteredItems.length === 0 ? (
+        {loading ? (
           <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--notion-text-muted)' }}>
-            <ListChecks size={28} style={{ opacity: 0.35, marginBottom: '8px' }} />
-            <p style={{ margin: '0 0 6px 0', fontSize: '14px', fontWeight: 600 }}>No checklist items match the selected filter</p>
-            <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: 'var(--notion-text-dim)' }}>
-              Try changing the frequency tab or resetting the department/status filters.
+            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px auto', opacity: 0.5 }} />
+            <p style={{ margin: 0, fontSize: '13px' }}>Loading checklist items from database...</p>
+          </div>
+        ) : filteredItems.length === 0 ? (
+          <div style={{ padding: '52px 24px', textAlign: 'center', color: 'var(--notion-text-muted)' }}>
+            <ListChecks size={32} style={{ opacity: 0.35, marginBottom: '10px' }} />
+            <p style={{ margin: '0 0 6px 0', fontSize: '14.5px', fontWeight: 700, color: 'var(--notion-text)' }}>
+              No {activeFrequency !== 'ALL' ? activeFrequency.toLowerCase() : ''} checklist items in database
+            </p>
+            <p style={{ margin: '0 0 16px 0', fontSize: '12.5px', color: 'var(--notion-text-dim)' }}>
+              Create your real institutional operational checklists here. All items will be saved directly into the database.
             </p>
             <button
               type="button"
               onClick={() => handleOpenCreateModal(activeFrequency === 'ALL' ? 'DAILY' : (activeFrequency as RoutineFrequency))}
               className="notion-btn notion-btn-primary"
-              style={{ fontSize: '11.5px', padding: '6px 14px' }}
+              style={{ fontSize: '12px', padding: '7px 18px', borderRadius: '8px', fontWeight: 700 }}
             >
-              <Plus size={12} />
-              <span>Add Checklist Item</span>
+              <Plus size={13} />
+              <span>Create Checklist Item in Database</span>
             </button>
           </div>
         ) : (
@@ -1299,7 +1056,7 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                 style={{
                   borderBottom: '1px solid var(--notion-border-subtle)',
                   padding: '12px 18px',
-                  background: completed ? 'rgba(240, 253, 244, 0.5)' : 'transparent',
+                  background: completed ? 'rgba(240, 253, 244, 0.55)' : 'transparent',
                   transition: 'background 0.15s ease',
                 }}
               >
@@ -1370,6 +1127,21 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                           >
                             <Clock size={11} />
                             {item.target_time}
+                          </span>
+                        )}
+
+                        {item.assigned_to_name && (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '11px',
+                              color: 'var(--notion-text-muted)',
+                            }}
+                          >
+                            <UserIcon size={11} />
+                            {item.assigned_to_name}
                           </span>
                         )}
                       </div>
@@ -1479,7 +1251,7 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                         color: '#ef4444',
                         padding: '4px',
                       }}
-                      title="Delete checklist item"
+                      title="Delete checklist item from database"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -1505,7 +1277,7 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
             zIndex: 100,
             padding: '20px',
           }}
-          onClick={() => setIsModalOpen(false)}
+          onClick={() => !savingItem && setIsModalOpen(false)}
         >
           <div
             style={{
@@ -1531,12 +1303,12 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ListChecks size={18} style={{ color: 'var(--notion-blue)' }} />
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--notion-text)' }}>
-                  {editingItem ? 'Edit Routine Checklist Item' : 'New Routine Checklist Item'}
+                  {editingItem ? 'Edit Checklist Item in Database' : 'Add New Checklist Item to Database'}
                 </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => !savingItem && setIsModalOpen(false)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--notion-text-muted)' }}
               >
                 <X size={16} />
@@ -1686,7 +1458,7 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. 09:00 AM Daily"
+                  placeholder="e.g. 09:00 AM"
                   value={formTargetTime}
                   onChange={(e) => setFormTargetTime(e.target.value)}
                   style={{
@@ -1735,6 +1507,7 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                   onClick={() => setIsModalOpen(false)}
                   className="notion-btn notion-btn-bordered"
                   style={{ fontSize: '12px', padding: '7px 16px', borderRadius: '8px' }}
+                  disabled={savingItem}
                 >
                   Cancel
                 </button>
@@ -1742,8 +1515,9 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                   type="submit"
                   className="notion-btn notion-btn-primary"
                   style={{ fontSize: '12px', padding: '7px 18px', borderRadius: '8px', fontWeight: 700 }}
+                  disabled={savingItem}
                 >
-                  {editingItem ? 'Save Changes' : 'Create Checklist Item'}
+                  {savingItem ? 'Saving to Database...' : editingItem ? 'Save Changes' : 'Save to Database'}
                 </button>
               </div>
             </form>
@@ -1753,4 +1527,3 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
     </div>
   );
 };
-
