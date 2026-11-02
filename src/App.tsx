@@ -592,6 +592,8 @@ const DashboardContent: React.FC = () => {
               {currentView === 'list' && (
                 <NotionListView
                   tasks={filteredTasks}
+                  staffList={staffList}
+                  departments={visibleDepartments}
                   onSelectTask={setSelectedTask}
                   onEditTask={handleEditTask}
                   onOpenCreateTask={canCreateTask ? () => setIsCreateTaskOpen(true) : undefined}

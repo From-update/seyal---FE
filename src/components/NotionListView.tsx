@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { Task, TaskStatus, Role } from '../types';
+import React, { useState, useMemo } from 'react';
+import { Task, TaskStatus, Role, User as UserType, Department } from '../types';
 import { parseCoAssignedTeam } from '../utils/coAssignUtils';
-import { Plus, Calendar, Clock, User, CheckCircle2, AlertCircle, ChevronRight, Filter, Play, Send, RotateCcw, CheckSquare, Edit } from 'lucide-react';
+import { Plus, Calendar, Clock, User, Users, CheckCircle2, AlertCircle, ChevronRight, Filter, Play, Send, RotateCcw, CheckSquare, Edit, Search } from 'lucide-react';
 
 interface NotionListViewProps {
   tasks: Task[];
+  staffList?: UserType[];
+  departments?: Department[];
   onSelectTask: (task: Task) => void;
   onEditTask?: (task: Task) => void;
   onOpenCreateTask?: () => void;
@@ -18,6 +20,8 @@ interface NotionListViewProps {
 
 export const NotionListView: React.FC<NotionListViewProps> = ({
   tasks,
+  staffList,
+  departments,
   onSelectTask,
   onEditTask,
   onOpenCreateTask,
@@ -30,13 +34,103 @@ export const NotionListView: React.FC<NotionListViewProps> = ({
 }) => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [onlyMyTasks, setOnlyMyTasks] = useState<boolean>(false);
+  const [selectedStaffId, setSelectedStaffId] = useState<string>('ALL');
+  const [staffSearchQuery, setStaffSearchQuery] = useState<string>('');
+
+  // Extract all available staff members from staffList and tasks (including co-assigned team members)
+  const availableStaff = useMemo(() => {
+    const map = new Map<string, { id: string | number; name: string; dept?: string; email?: string }>();
+
+    // 1. From staffList prop
+    if (staffList && staffList.length > 0) {
+      staffList.forEach((u) => {
+        if (u.is_active !== false) {
+          map.set(String(u.id), {
+            id: u.id,
+            name: u.full_name || u.username,
+            dept: u.department_code || u.department_name,
+            email: u.email,
+          });
+        }
+      });
+    }
+
+    // 2. From tasks
+    tasks.forEach((t) => {
+      if (t.assigned_to && t.assigned_to_name) {
+        if (!map.has(String(t.assigned_to))) {
+          map.set(String(t.assigned_to), {
+            id: t.assigned_to,
+            name: t.assigned_to_name,
+            dept: t.department_code || t.department_name,
+            email: t.assigned_to_email,
+          });
+        }
+      }
+      const { team } = parseCoAssignedTeam(t.description);
+      team.forEach((m) => {
+        const key = m.staffId ? String(m.staffId) : `name_${m.staffName}`;
+        if (!map.has(key) && m.staffName) {
+          map.set(key, {
+            id: m.staffId || m.staffName,
+            name: m.staffName,
+            dept: m.deptCode || m.deptName,
+            email: m.staffEmail,
+          });
+        }
+      });
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [staffList, tasks]);
 
   const filteredTasks = tasks.filter((t) => {
-    if (onlyMyTasks && currentUserId && t.assigned_to !== currentUserId) {
+    // 1. My Action Tasks quick toggle
+    if (onlyMyTasks && currentUserId) {
+      const { team } = parseCoAssignedTeam(t.description);
+      const isCoAssignedToMe = team.some((m) => String(m.staffId) === String(currentUserId));
+      if (t.assigned_to !== currentUserId && !isCoAssignedToMe) {
+        return false;
+      }
+    }
+
+    // 2. Status Filter
+    if (statusFilter !== 'ALL' && t.status !== statusFilter) {
       return false;
     }
-    if (statusFilter === 'ALL') return true;
-    return t.status === statusFilter;
+
+    // 3. Staff Filter
+    if (selectedStaffId !== 'ALL') {
+      const { team } = parseCoAssignedTeam(t.description);
+      if (selectedStaffId === 'UNASSIGNED') {
+        if (t.assigned_to || team.length > 0) return false;
+      } else {
+        const isPrimary = String(t.assigned_to) === String(selectedStaffId);
+        const selectedObj = availableStaff.find((s) => String(s.id) === String(selectedStaffId));
+        const isCoAssigned = team.some((m) => {
+          if (m.staffId && String(m.staffId) === String(selectedStaffId)) return true;
+          if (selectedObj && m.staffName.toLowerCase() === selectedObj.name.toLowerCase()) return true;
+          return false;
+        });
+        if (!isPrimary && !isCoAssigned) return false;
+      }
+    }
+
+    // 4. Search query
+    if (staffSearchQuery.trim()) {
+      const q = staffSearchQuery.toLowerCase();
+      const titleMatch = t.title.toLowerCase().includes(q);
+      const descMatch = (t.description || '').toLowerCase().includes(q);
+      const assigneeMatch = (t.assigned_to_name || '').toLowerCase().includes(q);
+      const deptMatch = (t.department_name || t.department_code || '').toLowerCase().includes(q);
+      const { team } = parseCoAssignedTeam(t.description);
+      const coAssigneeMatch = team.some((m) => m.staffName.toLowerCase().includes(q) || (m.deptName && m.deptName.toLowerCase().includes(q)));
+      if (!titleMatch && !descMatch && !assigneeMatch && !deptMatch && !coAssigneeMatch) {
+        return false;
+      }
+    }
+
+    return true;
   });
 
   const getStatusTag = (status: TaskStatus) => {
@@ -93,8 +187,8 @@ export const NotionListView: React.FC<NotionListViewProps> = ({
 
   return (
     <div style={{ padding: '24px 32px', maxWidth: '1360px', margin: '0 auto' }}>
-      {/* Top filter pills and My Tasks toggle */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
+      {/* Top Filter Bar: Assigned to Me, Staff Filter Dropdown, Status Pills, Quick Search, New Task */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {/* My Action Tasks Quick Toggle */}
           <button
@@ -102,26 +196,93 @@ export const NotionListView: React.FC<NotionListViewProps> = ({
             onClick={() => setOnlyMyTasks(!onlyMyTasks)}
             className="notion-btn"
             style={{
-              fontSize: '12.5px',
-              padding: '6px 14px',
+              fontSize: '12px',
+              padding: '6px 12px',
               background: onlyMyTasks ? 'var(--notion-blue)' : 'var(--notion-card)',
               color: onlyMyTasks ? '#ffffff' : 'var(--notion-text)',
               fontWeight: 700,
               border: onlyMyTasks ? '1px solid var(--notion-blue)' : '1px solid var(--notion-border)',
-              borderRadius: '9px',
+              borderRadius: '8px',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              boxShadow: onlyMyTasks ? '0 2px 8px rgba(79, 70, 229, 0.3)' : 'var(--notion-shadow-sm)',
+              boxShadow: onlyMyTasks ? '0 2px 6px rgba(79, 70, 229, 0.25)' : 'var(--notion-shadow-sm)',
             }}
             title="Toggle to view only tasks assigned to me"
           >
-            <CheckSquare size={14} />
-            <span>Assigned to Me ({tasks.filter((t) => t.assigned_to === currentUserId).length})</span>
+            <CheckSquare size={13} />
+            <span>Assigned to Me</span>
           </button>
 
-          <div style={{ width: '1px', height: '22px', background: 'var(--notion-border)', margin: '0 4px' }} />
+          <div style={{ width: '1px', height: '20px', background: 'var(--notion-border)', margin: '0 2px' }} />
 
+          {/* Staff Member Filter Dropdown */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              background: selectedStaffId !== 'ALL' ? 'rgba(35, 131, 226, 0.12)' : 'var(--notion-card)',
+              border: selectedStaffId !== 'ALL' ? '1.5px solid var(--notion-blue)' : '1px solid var(--notion-border)',
+              borderRadius: '8px',
+              boxShadow: 'var(--notion-shadow-sm)',
+            }}
+          >
+            <User size={13} style={{ color: selectedStaffId !== 'ALL' ? 'var(--notion-blue)' : 'var(--notion-text-muted)' }} />
+            <span style={{ fontSize: '11.5px', fontWeight: 700, color: selectedStaffId !== 'ALL' ? 'var(--notion-blue)' : 'var(--notion-text-muted)' }}>Staff:</span>
+            <select
+              value={selectedStaffId}
+              onChange={(e) => setSelectedStaffId(e.target.value)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                fontSize: '12px',
+                fontWeight: selectedStaffId !== 'ALL' ? 700 : 500,
+                color: selectedStaffId !== 'ALL' ? 'var(--notion-blue)' : 'var(--notion-text)',
+                cursor: 'pointer',
+                maxWidth: '190px',
+              }}
+            >
+              <option value="ALL">All Staff ({tasks.length})</option>
+              <option value="UNASSIGNED">Unassigned Queue ({tasks.filter(t => !t.assigned_to && parseCoAssignedTeam(t.description).team.length === 0).length})</option>
+              {availableStaff.map((s) => {
+                const staffCount = tasks.filter((t) => {
+                  if (String(t.assigned_to) === String(s.id)) return true;
+                  const { team } = parseCoAssignedTeam(t.description);
+                  return team.some((m) => String(m.staffId) === String(s.id) || m.staffName.toLowerCase() === s.name.toLowerCase());
+                }).length;
+                return (
+                  <option key={String(s.id)} value={String(s.id)}>
+                    {s.name} {s.dept ? `[${s.dept}]` : ''} ({staffCount})
+                  </option>
+                );
+              })}
+            </select>
+            {selectedStaffId !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedStaffId('ALL')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '0 2px',
+                  cursor: 'pointer',
+                  color: 'var(--notion-blue)',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                }}
+                title="Reset to All Staff"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          <div style={{ width: '1px', height: '20px', background: 'var(--notion-border)', margin: '0 2px' }} />
+
+          {/* Status Pills */}
           {[
             { id: 'ALL', label: `All (${tasks.length})` },
             { id: 'TODO', label: `To Do (${tasks.filter((t) => t.status === 'TODO').length})` },
@@ -135,8 +296,8 @@ export const NotionListView: React.FC<NotionListViewProps> = ({
               onClick={() => setStatusFilter(pill.id)}
               className="notion-btn"
               style={{
-                fontSize: '12px',
-                padding: '5px 12px',
+                fontSize: '11.5px',
+                padding: '4px 10px',
                 background: statusFilter === pill.id ? 'var(--notion-item-bg)' : 'transparent',
                 color: statusFilter === pill.id ? 'var(--notion-blue)' : 'var(--notion-text-muted)',
                 fontWeight: statusFilter === pill.id ? 700 : 500,
@@ -149,16 +310,57 @@ export const NotionListView: React.FC<NotionListViewProps> = ({
           ))}
         </div>
 
-        {(canCreateTask !== false && onOpenCreateTask) && (
-          <button
-            onClick={onOpenCreateTask}
-            className="notion-btn notion-btn-primary"
-            style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', gap: '6px', fontWeight: 700 }}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Quick Search */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '5px 10px',
+              background: 'var(--notion-card)',
+              border: '1px solid var(--notion-border)',
+              borderRadius: '8px',
+              width: '180px',
+            }}
           >
-            <Plus size={14} />
-            <span>New Task</span>
-          </button>
-        )}
+            <Search size={13} style={{ color: 'var(--notion-text-muted)' }} />
+            <input
+              type="text"
+              placeholder="Filter tasks..."
+              value={staffSearchQuery}
+              onChange={(e) => setStaffSearchQuery(e.target.value)}
+              style={{
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                fontSize: '12px',
+                width: '100%',
+                color: 'var(--notion-text)',
+              }}
+            />
+            {staffSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setStaffSearchQuery('')}
+                style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--notion-text-muted)', padding: 0 }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {(canCreateTask !== false && onOpenCreateTask) && (
+            <button
+              onClick={onOpenCreateTask}
+              className="notion-btn notion-btn-primary"
+              style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', gap: '6px', fontWeight: 700 }}
+            >
+              <Plus size={14} />
+              <span>New Task</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* List Container */}
