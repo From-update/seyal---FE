@@ -4,10 +4,11 @@ import { useLanguage } from '../context/LanguageContext';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import { LanguageToggle } from './LanguageToggle';
 import { Department, User } from '../types';
-import { isUserAllowedToViewPage } from '../utils/pagePermissions';
+import { isUserAllowedToViewPage, ViewType } from '../utils/pagePermissions';
 import rathinamLogo from '../image/image.png';
 import {
   CheckSquare,
+  ListChecks,
   ShieldCheck,
   Building,
   Users,
@@ -34,7 +35,7 @@ import {
 } from 'lucide-react';
 
 interface NotionSidebarProps {
-  currentView: 'board' | 'list' | 'calendar' | 'table' | 'approvals' | 'staff' | 'departments' | 'report' | 'settings' | 'today' | 'self_desk';
+  currentView: ViewType;
   onSelectView: (view: any) => void;
   selectedDeptId: number | 'ALL';
   onSelectDept: (deptId: number | 'ALL') => void;
@@ -396,6 +397,41 @@ export const NotionSidebar: React.FC<NotionSidebarProps> = ({
                 }}
               >
                 {t('strictlyPrivate')}
+              </span>
+            </button>
+          )}
+
+          {/* Routine Work Checklist (Daily, Weekly, Monthly, Yearly) */}
+          {isUserAllowedToViewPage(currentUser, 'routine_work') && (
+            <button
+              onClick={() => onSelectView('routine_work')}
+              className="notion-btn"
+              style={{
+                width: '100%',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                borderRadius: '9px',
+                background: currentView === 'routine_work' ? 'var(--notion-item-bg)' : 'transparent',
+                border: currentView === 'routine_work' ? '1px solid var(--notion-border)' : '1px solid transparent',
+                fontWeight: currentView === 'routine_work' ? 700 : 500,
+                color: currentView === 'routine_work' ? 'var(--notion-text)' : 'var(--notion-text-muted)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <ListChecks size={16} style={{ color: '#0ea5e9' }} />
+                <span>{isTamil ? 'வழக்கமான பணிகள்' : 'Routine Work'}</span>
+              </div>
+              <span
+                className="notion-tag"
+                style={{
+                  fontSize: '9.5px',
+                  padding: '1px 6px',
+                  background: 'rgba(14, 165, 233, 0.12)',
+                  color: '#0284c7',
+                  fontWeight: 700,
+                }}
+              >
+                {isTamil ? 'சரிபார்ப்பு' : 'Checklists'}
               </span>
             </button>
           )}

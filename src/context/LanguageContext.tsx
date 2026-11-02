@@ -31,6 +31,8 @@ export const DICTIONARY: Record<string, Record<Language, string>> = {
   allTasks: { en: 'All Tasks', ta: 'அனைத்து பணிகள்' },
   staffMatrix: { en: 'Staff Work Table', ta: 'பணியாளர் பணி அட்டவணை' },
   personalDesk: { en: 'My Private Desk', ta: 'எனது சொந்த வேலை மேசை' },
+  routineWork: { en: 'Routine Work', ta: 'வழக்கமான பணிகள்' },
+  routineChecklist: { en: 'Routine Checklists', ta: 'சரிபார்ப்பு பட்டியல்' },
   strictlyPrivate: { en: 'Private', ta: 'தனிப்பட்டது' },
   todayUrgent: { en: 'Urgent Today', ta: 'இன்றைய அவசர பணிகள்' },
   approvalsHub: { en: 'Task Approvals', ta: 'பணிகள் ஒப்புதல்' },

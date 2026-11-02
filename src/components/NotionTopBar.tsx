@@ -4,11 +4,11 @@ import { ThemeSwitcher } from './ThemeSwitcher';
 import { LanguageToggle } from './LanguageToggle';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { isUserAllowedToViewPage } from '../utils/pagePermissions';
+import { isUserAllowedToViewPage, ViewType } from '../utils/pagePermissions';
 import rathinamLogo from '../image/image.png';
 
 interface NotionTopBarProps {
-  currentView: 'board' | 'list' | 'calendar' | 'table' | 'approvals' | 'staff' | 'departments' | 'report' | 'settings' | 'today' | 'self_desk';
+  currentView: ViewType;
   onSelectView: (view: any) => void;
   deptTitle: string;
   searchQuery: string;
@@ -45,6 +45,8 @@ export const NotionTopBar: React.FC<NotionTopBarProps> = ({
 
   const getViewTitle = () => {
     switch (currentView) {
+      case 'routine_work':
+        return isTamil ? 'வழக்கமான பணிகள் & சரிபார்ப்பு' : 'Routine Work Checklists';
       case 'today':
         return t('todayUrgent');
       case 'self_desk':

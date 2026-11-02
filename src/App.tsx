@@ -25,6 +25,7 @@ import { NotionReportsView } from './components/NotionReportsView';
 import { NotionSettingsView } from './components/NotionSettingsView';
 import { NotionGMTodayView } from './components/NotionGMTodayView';
 import { SelfDeskView } from './components/SelfDeskView';
+import { RoutineWorkView } from './components/RoutineWorkView';
 import { RefreshCw, Bell, Sparkles, Lock, ShieldAlert } from 'lucide-react';
 import { isUserAllowedToViewPage, ALL_APP_PAGES } from './utils/pagePermissions';
 import {
@@ -36,11 +37,12 @@ import {
   triggerTestWorkReminder,
 } from './services/notifications';
 
-export type ViewType = 'board' | 'list' | 'calendar' | 'table' | 'approvals' | 'staff' | 'departments' | 'report' | 'settings' | 'today' | 'self_desk';
+export type ViewType = 'board' | 'list' | 'calendar' | 'table' | 'approvals' | 'staff' | 'departments' | 'report' | 'settings' | 'today' | 'self_desk' | 'routine_work';
 
 export const getViewFromPath = (path: string): ViewType => {
   const parts = path.toLowerCase().split('/').filter(Boolean).filter(p => p !== 'nextup');
   const cleanPath = parts[0] || '';
+  if (cleanPath === 'routine' || cleanPath === 'routine-work' || cleanPath === 'routines' || cleanPath === 'checklist' || cleanPath === 'checklists') return 'routine_work';
   if (cleanPath === 'self' || cleanPath === 'self-desk' || cleanPath === 'personal' || cleanPath === 'notes' || cleanPath === 'my-tasks') return 'self_desk';
   if (cleanPath === 'today' || cleanPath === 'urgent' || cleanPath === 'gmtoday') return 'today';
   if (cleanPath === 'settings' || cleanPath === 'admin') return 'settings';
@@ -58,6 +60,7 @@ export const getViewFromPath = (path: string): ViewType => {
 export const getPathFromView = (view: ViewType): string => {
   const isNextup = window.location.pathname.startsWith('/nextup');
   const prefix = isNextup ? '/nextup' : '';
+  if (view === 'routine_work') return `${prefix}/routine-work`;
   if (view === 'self_desk') return `${prefix}/self-desk`;
   if (view === 'board') return `${prefix}/board`;
   if (view === 'list') return `${prefix}/list`;
@@ -733,6 +736,15 @@ const DashboardContent: React.FC = () => {
 
               {currentView === 'self_desk' && currentUser && (
                 <SelfDeskView currentUser={currentUser} />
+              )}
+
+              {currentView === 'routine_work' && currentUser && (
+                <RoutineWorkView
+                  currentUser={currentUser}
+                  departments={visibleDepartments}
+                  staffList={staffList}
+                  onOpenCreateTask={canCreateTask ? () => setIsCreateTaskOpen(true) : undefined}
+                />
               )}
             </>
           )}

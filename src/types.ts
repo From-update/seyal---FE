@@ -223,3 +223,39 @@ export interface SelfNote {
   updated_at: string;
 }
 
+
+export type RoutineFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+
+export interface RoutineWorkItem {
+  id: number | string;
+  title: string;
+  description: string;
+  frequency: RoutineFrequency;
+  department: number | null;
+  department_name?: string;
+  department_code?: string;
+  assigned_to: number | null;
+  assigned_to_name?: string;
+  created_by?: number;
+  created_by_name?: string;
+  priority: Priority;
+  target_time?: string;
+  is_active: boolean;
+  is_completed?: boolean;
+  last_completed_at?: string | null;
+  last_completed_by?: number | null;
+  last_completed_by_name?: string;
+  completion_notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface RoutineWorkLog {
+  id?: number | string;
+  item_id: number | string;
+  completed_by: number;
+  completed_by_name?: string;
+  completed_at: string;
+  period_identifier: string;
+  notes?: string;
+}

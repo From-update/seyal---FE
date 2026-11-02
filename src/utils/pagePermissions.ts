@@ -6,6 +6,7 @@ export type ViewType =
   | 'list'
   | 'calendar'
   | 'self_desk'
+  | 'routine_work'
   | 'today'
   | 'approvals'
   | 'departments'
@@ -64,6 +65,14 @@ export const ALL_APP_PAGES: AppPageDef[] = [
     iconName: 'Lock',
   },
   {
+    key: 'routine_work',
+    label: 'Routine Work & Checklists',
+    category: 'Workspace',
+    description: 'Daily, Weekly, Monthly, and Yearly operational checklists',
+    route: '/nextup/routine-work',
+    iconName: 'ListChecks',
+  },
+  {
     key: 'today',
     label: 'Today & Urgent Desk',
     category: 'Executive Desk',
@@ -118,10 +127,10 @@ export const getDefaultAllowedPagesForRole = (role?: Role): ViewType[] => {
     return ALL_APP_PAGES.map((p) => p.key);
   }
   if (role === 'DEPT_MANAGER') {
-    return ['board', 'table', 'list', 'calendar', 'self_desk', 'departments', 'staff', 'report'];
+    return ['board', 'table', 'list', 'calendar', 'self_desk', 'routine_work', 'departments', 'staff', 'report'];
   }
   // Standard Staff
-  return ['board', 'table', 'list', 'calendar', 'self_desk', 'staff'];
+  return ['board', 'table', 'list', 'calendar', 'self_desk', 'routine_work', 'staff'];
 };
 
 export const isUserAllowedToViewPage = (user: User | null | undefined, view: ViewType): boolean => {
