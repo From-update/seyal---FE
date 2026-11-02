@@ -1,14 +1,14 @@
 {
-  "version": "2.2.7",
-  "versionCode": 12,
+  "version": "2.2.8",
+  "versionCode": 13,
   "apkUrl": "https://www.rguedu.in/nextup/NextUp.apk",
   "fallbackApkUrl": "https://www.rguedu.in/nextup/NextUp.apk",
   "releaseNotes": [
-    "Multi-staff & department assignment unified on single tasks",
-    "Clean production UI with removed internal server/backend configuration details",
-    "Enhanced task media handling and full attachment previews",
-    "Performance and connection stability improvements"
+    "Multi-staff & department co-assignment in mobile task creation",
+    "Duplicate staff prevention across multiple targets",
+    "Clean login UI without demo accounts",
+    "Enhanced task media handling and attachment previews"
   ],
-  "publishedAt": "2026-11-01",
+  "publishedAt": "2026-11-02",
   "mandatory": false
 }
