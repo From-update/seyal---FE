@@ -259,8 +259,22 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
     setFormTitle('');
     setFormDesc('');
     setFormFrequency(freq);
-    setFormDept(activeDeptFilter !== 'ALL' ? Number(activeDeptFilter) : (currentUser.department || (departments[0]?.id ?? '')));
-    setFormAssignee(currentUser.id || '');
+    const chosenDept = activeDeptFilter !== 'ALL'
+      ? Number(activeDeptFilter)
+      : (currentUser.department || (departments[0]?.id ?? ''));
+    setFormDept(chosenDept);
+
+    // Only assign currentUser if currentUser belongs to chosenDept, else pick first staff of that department or leave empty
+    const deptStaff = staffList?.filter((s) => chosenDept && Number(s.department) === Number(chosenDept));
+    const isUserInDept = currentUser.department && Number(currentUser.department) === Number(chosenDept);
+    if (isUserInDept) {
+      setFormAssignee(currentUser.id);
+    } else if (deptStaff && deptStaff.length > 0) {
+      setFormAssignee(deptStaff[0].id);
+    } else {
+      setFormAssignee('');
+    }
+
     setFormPriority('MEDIUM');
     setFormTargetTime(
       freq === 'DAILY'
@@ -444,6 +458,46 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
     if (!selectedDeptObj) return { total: items.length, completed: 0, percent: 0 };
     return deptStats.get(String(selectedDeptObj.id)) || { total: 0, completed: 0, percent: 0 };
   }, [selectedDeptObj, deptStats, items.length]);
+
+  // Staff list for the modal, strictly filtered by the selected department (formDept)
+  const modalAvailableStaff = useMemo(() => {
+    if (!staffList || staffList.length === 0) return [];
+    if (!formDept) return staffList;
+
+    const currentDeptObj = departments.find((d) => Number(d.id) === Number(formDept));
+
+    return staffList.filter((s) => {
+      // 1. Direct ID match
+      if (s.department != null && Number(s.department) === Number(formDept)) {
+        return true;
+      }
+      // 2. Department name match
+      if (currentDeptObj && s.department_name && s.department_name.trim().toLowerCase() === currentDeptObj.name.trim().toLowerCase()) {
+        return true;
+      }
+      // 3. Department code match
+      if (currentDeptObj && currentDeptObj.code && s.department_code && s.department_code.trim().toLowerCase() === currentDeptObj.code.trim().toLowerCase()) {
+        return true;
+      }
+      // 4. If editing existing item, keep current assignee in the list
+      if (editingItem && editingItem.assigned_to && Number(s.id) === Number(editingItem.assigned_to)) {
+        return true;
+      }
+      return false;
+    });
+  }, [staffList, formDept, departments, editingItem]);
+
+  // Toolbar staff list, scoped to active department filter
+  const toolbarStaffList = useMemo(() => {
+    if (!staffList || staffList.length === 0) return [];
+    if (activeDeptFilter === 'ALL') return staffList;
+    return staffList.filter((s) => {
+      if (s.department != null && Number(s.department) === Number(activeDeptFilter)) return true;
+      if (selectedDeptObj && s.department_name && s.department_name.trim().toLowerCase() === selectedDeptObj.name.trim().toLowerCase()) return true;
+      const hasItem = items.some((i) => isItemInDept(i, activeDeptFilter, selectedDeptObj?.name) && Number(i.assigned_to) === Number(s.id));
+      return hasItem;
+    });
+  }, [staffList, activeDeptFilter, selectedDeptObj, items, isItemInDept]);
 
   // Computed Scoped Items
   const filteredItems = useMemo(() => {
@@ -1234,8 +1288,8 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                     maxWidth: '160px',
                   }}
                 >
-                  <option value="ALL">All Personnel</option>
-                  {staffList.map((s) => (
+                  <option value="ALL">All Personnel ({toolbarStaffList.length})</option>
+                  {toolbarStaffList.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.full_name || s.username}
                     </option>
@@ -1762,7 +1816,23 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                   </label>
                   <select
                     value={String(formDept)}
-                    onChange={(e) => setFormDept(e.target.value ? Number(e.target.value) : '')}
+                    onChange={(e) => {
+                      const newDeptId = e.target.value ? Number(e.target.value) : '';
+                      setFormDept(newDeptId);
+                      // If chosen assignee does not belong to the newly selected department, reset assignee
+                      if (newDeptId && formAssignee) {
+                        const newDeptObj = departments.find((d) => Number(d.id) === Number(newDeptId));
+                        const stillBelongs = staffList?.some((s) => {
+                          if (Number(s.id) !== Number(formAssignee)) return false;
+                          if (s.department != null && Number(s.department) === Number(newDeptId)) return true;
+                          if (newDeptObj && s.department_name && s.department_name.trim().toLowerCase() === newDeptObj.name.trim().toLowerCase()) return true;
+                          return false;
+                        });
+                        if (!stillBelongs) {
+                          setFormAssignee('');
+                        }
+                      }
+                    }}
                     style={{
                       width: '100%',
                       padding: '8px 12px',
@@ -1785,7 +1855,7 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
 
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, marginBottom: '6px', color: 'var(--notion-text)' }}>
-                    Assigned Personnel
+                    Assigned Personnel {formDept ? `(${modalAvailableStaff.length})` : ''}
                   </label>
                   <select
                     value={String(formAssignee)}
@@ -1801,13 +1871,22 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                       outline: 'none',
                     }}
                   >
-                    <option value="">Select Staff</option>
-                    {staffList?.map((s) => (
+                    <option value="">
+                      {modalAvailableStaff.length === 0
+                        ? (formDept ? 'No staff in this department' : 'Select Department first')
+                        : 'Select Staff Member'}
+                    </option>
+                    {modalAvailableStaff.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.full_name || s.username}
+                        {s.full_name || s.username} {s.department_code ? `[${s.department_code}]` : ''}
                       </option>
                     ))}
                   </select>
+                  {formDept && modalAvailableStaff.length === 0 && (
+                    <span style={{ fontSize: '11px', color: '#f59e0b', marginTop: '4px', display: 'block' }}>
+                      ⚠️ No staff registered in this department directory.
+                    </span>
+                  )}
                 </div>
               </div>
 
