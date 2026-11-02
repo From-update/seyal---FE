@@ -35,6 +35,8 @@ interface RoutineWorkViewProps {
   currentUser: User;
   departments: Department[];
   staffList?: User[];
+  selectedDeptId?: number | 'ALL';
+  onSelectDept?: (deptId: number | 'ALL') => void;
   onOpenCreateTask?: (prefill?: { title?: string; description?: string; department?: number; priority?: Priority }) => void;
 }
 
@@ -72,6 +74,8 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
   currentUser,
   departments,
   staffList,
+  selectedDeptId: selectedDeptIdProp,
+  onSelectDept: onSelectDeptProp,
   onOpenCreateTask,
 }) => {
   const { isTamil } = useLanguage();
@@ -79,8 +83,24 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
   // Active frequency tab: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'ALL'
   const [activeFrequency, setActiveFrequency] = useState<string>('DAILY');
 
+  // Department Filter with internal / external synchronization
+  const [internalDeptFilter, setInternalDeptFilter] = useState<number | 'ALL'>(selectedDeptIdProp || 'ALL');
+  const activeDeptFilter = selectedDeptIdProp !== undefined ? selectedDeptIdProp : internalDeptFilter;
+
+  const handleSelectDept = (deptId: number | 'ALL') => {
+    setInternalDeptFilter(deptId);
+    if (onSelectDeptProp) {
+      onSelectDeptProp(deptId);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedDeptIdProp !== undefined) {
+      setInternalDeptFilter(selectedDeptIdProp);
+    }
+  }, [selectedDeptIdProp]);
+
   // Filters
-  const [deptFilter, setDeptFilter] = useState<number | 'ALL'>('ALL');
   const [staffFilter, setStaffFilter] = useState<number | 'ALL'>('ALL');
   const [onlyMyTasks, setOnlyMyTasks] = useState<boolean>(false);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED'>('ALL');
@@ -239,7 +259,7 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
     setFormTitle('');
     setFormDesc('');
     setFormFrequency(freq);
-    setFormDept(currentUser.department || (departments[0]?.id ?? ''));
+    setFormDept(activeDeptFilter !== 'ALL' ? Number(activeDeptFilter) : (currentUser.department || (departments[0]?.id ?? '')));
     setFormAssignee(currentUser.id || '');
     setFormPriority('MEDIUM');
     setFormTargetTime(
@@ -367,6 +387,64 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
     window.print();
   };
 
+  // Helper to check department matching
+  const isItemInDept = useCallback((item: RoutineWorkItem, deptId: number | 'ALL', deptName?: string): boolean => {
+    if (deptId === 'ALL') return true;
+    if (item.department != null) {
+      if (Number(item.department) === Number(deptId) || String(item.department) === String(deptId)) {
+        return true;
+      }
+    }
+    if (deptName && item.department_name) {
+      if (item.department_name.trim().toLowerCase() === deptName.trim().toLowerCase()) {
+        return true;
+      }
+    }
+    return false;
+  }, []);
+
+  // Unified list of all departments from departments prop and items
+  const allDepartmentOptions = useMemo(() => {
+    const map = new Map<string, { id: number; name: string; code?: string }>();
+    if (departments && departments.length > 0) {
+      departments.forEach((d) => {
+        map.set(String(d.id), { id: d.id, name: d.name, code: d.code });
+      });
+    }
+    items.forEach((item) => {
+      if (item.department && !map.has(String(item.department))) {
+        map.set(String(item.department), {
+          id: Number(item.department),
+          name: item.department_name || `Dept #${item.department}`,
+          code: item.department_code,
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [departments, items]);
+
+  const selectedDeptObj = useMemo(() => {
+    if (activeDeptFilter === 'ALL') return null;
+    return allDepartmentOptions.find((d) => String(d.id) === String(activeDeptFilter)) || null;
+  }, [allDepartmentOptions, activeDeptFilter]);
+
+  // Department-wise live stats
+  const deptStats = useMemo(() => {
+    const statsMap = new Map<string, { total: number; completed: number; percent: number }>();
+    allDepartmentOptions.forEach((d) => {
+      const deptItems = items.filter((i) => isItemInDept(i, d.id, d.name));
+      const done = deptItems.filter((i) => isItemCompletedCurrentCycle(i).completed).length;
+      const pct = deptItems.length > 0 ? Math.round((done / deptItems.length) * 100) : 0;
+      statsMap.set(String(d.id), { total: deptItems.length, completed: done, percent: pct });
+    });
+    return statsMap;
+  }, [allDepartmentOptions, items, logs, isItemInDept]);
+
+  const selectedDeptStats = useMemo(() => {
+    if (!selectedDeptObj) return { total: items.length, completed: 0, percent: 0 };
+    return deptStats.get(String(selectedDeptObj.id)) || { total: 0, completed: 0, percent: 0 };
+  }, [selectedDeptObj, deptStats, items.length]);
+
   // Computed Scoped Items
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -375,9 +453,11 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
         return false;
       }
 
-      // Department Filter
-      if (deptFilter !== 'ALL') {
-        if (Number(item.department) !== Number(deptFilter)) return false;
+      // Department Filter: STRICT! Only show checklist items for this department
+      if (activeDeptFilter !== 'ALL') {
+        if (!isItemInDept(item, activeDeptFilter, selectedDeptObj?.name)) {
+          return false;
+        }
       }
 
       // Staff Filter
@@ -409,12 +489,16 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
 
       return true;
     });
-  }, [items, logs, activeFrequency, deptFilter, staffFilter, onlyMyTasks, statusFilter, searchQuery, currentUser.id]);
+  }, [items, logs, activeFrequency, activeDeptFilter, selectedDeptObj, staffFilter, onlyMyTasks, statusFilter, searchQuery, currentUser.id, isItemInDept]);
 
-  // Frequency-wise completion stats
+  // Frequency-wise completion stats (Scoped dynamically to active department)
   const stats = useMemo(() => {
+    const scoped = activeDeptFilter === 'ALL'
+      ? items
+      : items.filter((i) => isItemInDept(i, activeDeptFilter, selectedDeptObj?.name));
+
     const calc = (freq: RoutineFrequency) => {
-      const list = items.filter((i) => i.frequency === freq);
+      const list = scoped.filter((i) => i.frequency === freq);
       const done = list.filter((i) => isItemCompletedCurrentCycle(i).completed).length;
       return { total: list.length, completed: done, percent: list.length > 0 ? Math.round((done / list.length) * 100) : 0 };
     };
@@ -425,13 +509,13 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
       MONTHLY: calc('MONTHLY'),
       YEARLY: calc('YEARLY'),
       ALL: {
-        total: items.length,
-        completed: items.filter((i) => isItemCompletedCurrentCycle(i).completed).length,
+        total: scoped.length,
+        completed: scoped.filter((i) => isItemCompletedCurrentCycle(i).completed).length,
       },
     };
-  }, [items, logs]);
+  }, [items, logs, activeDeptFilter, selectedDeptObj, isItemInDept]);
 
-  const hasActiveFilters = deptFilter !== 'ALL' || staffFilter !== 'ALL' || onlyMyTasks || statusFilter !== 'ALL' || Boolean(searchQuery.trim());
+  const hasActiveFilters = activeDeptFilter !== 'ALL' || staffFilter !== 'ALL' || onlyMyTasks || statusFilter !== 'ALL' || Boolean(searchQuery.trim());
 
   const getPriorityBadge = (p: Priority) => {
     switch (p) {
@@ -562,6 +646,254 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* DEPARTMENT SELECTOR BAR (Click any department to view only its checklists)*/}
+      {/* ========================================================================= */}
+      <div
+        style={{
+          background: 'var(--notion-card)',
+          border: '1px solid var(--notion-border)',
+          borderRadius: '14px',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+          padding: '14px 18px',
+          marginBottom: '18px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div
+              style={{
+                width: '26px',
+                height: '26px',
+                borderRadius: '6px',
+                background: 'rgba(124, 58, 237, 0.12)',
+                color: '#7c3aed',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Building size={15} />
+            </div>
+            <span style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--notion-text)', letterSpacing: '-0.01em' }}>
+              {isTamil ? 'துறை வாரியான சரிபார்ப்புகள்' : 'Department Checklists'}
+            </span>
+            <span style={{ fontSize: '12px', color: 'var(--notion-text-muted)' }}>
+              • {isTamil ? 'துறையை கிளிக் செய்து அந்த துறையின் பணிகளை மட்டும் பார்க்கவும்' : 'Click any department to view only its checklists'}
+            </span>
+          </div>
+
+          {activeDeptFilter !== 'ALL' && (
+            <button
+              type="button"
+              onClick={() => handleSelectDept('ALL')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '11.5px',
+                color: '#7c3aed',
+                background: 'rgba(124, 58, 237, 0.08)',
+                border: '1px solid rgba(124, 58, 237, 0.25)',
+                padding: '4px 10px',
+                borderRadius: '7px',
+                cursor: 'pointer',
+                fontWeight: 700,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <X size={12} />
+              <span>{isTamil ? 'அனைத்து துறைகளும்' : 'View All Departments'}</span>
+            </button>
+          )}
+        </div>
+
+        {/* Scrollable / Responsive Department Tabs */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            overflowX: 'auto',
+            paddingBottom: '4px',
+          }}
+        >
+          {/* 1. All Departments Tab */}
+          <button
+            type="button"
+            onClick={() => handleSelectDept('ALL')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 14px',
+              borderRadius: '10px',
+              border: activeDeptFilter === 'ALL' ? '2px solid #7c3aed' : '1px solid var(--notion-border)',
+              background: activeDeptFilter === 'ALL' ? 'rgba(124, 58, 237, 0.12)' : 'var(--notion-item-bg)',
+              color: activeDeptFilter === 'ALL' ? '#7c3aed' : 'var(--notion-text)',
+              fontWeight: activeDeptFilter === 'ALL' ? 800 : 600,
+              fontSize: '12px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease',
+              boxShadow: activeDeptFilter === 'ALL' ? '0 2px 8px rgba(124, 58, 237, 0.22)' : 'none',
+              flexShrink: 0,
+            }}
+          >
+            <span>🌐 {isTamil ? 'அனைத்து துறைகளும்' : 'All Departments'}</span>
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                padding: '1px 7px',
+                borderRadius: '10px',
+                background: activeDeptFilter === 'ALL' ? '#7c3aed' : 'rgba(0, 0, 0, 0.06)',
+                color: activeDeptFilter === 'ALL' ? '#ffffff' : 'var(--notion-text-muted)',
+              }}
+            >
+              {items.length}
+            </span>
+          </button>
+
+          {/* 2. Each Individual Department Tab */}
+          {allDepartmentOptions.map((d) => {
+            const isSelected = String(activeDeptFilter) === String(d.id);
+            const stat = deptStats.get(String(d.id)) || { total: 0, completed: 0, percent: 0 };
+
+            return (
+              <button
+                key={String(d.id)}
+                type="button"
+                onClick={() => handleSelectDept(d.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  border: isSelected ? '2px solid #7c3aed' : '1px solid var(--notion-border)',
+                  background: isSelected ? 'rgba(124, 58, 237, 0.12)' : 'var(--notion-card)',
+                  color: isSelected ? '#7c3aed' : 'var(--notion-text)',
+                  fontWeight: isSelected ? 800 : 600,
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease',
+                  boxShadow: isSelected ? '0 2px 8px rgba(124, 58, 237, 0.22)' : 'none',
+                  flexShrink: 0,
+                }}
+              >
+                <Building size={13} style={{ color: isSelected ? '#7c3aed' : 'var(--notion-text-muted)' }} />
+                <span>{d.name}</span>
+                {d.code && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      background: isSelected ? 'rgba(124, 58, 237, 0.2)' : 'rgba(0, 0, 0, 0.05)',
+                      color: isSelected ? '#7c3aed' : 'var(--notion-text-dim)',
+                    }}
+                  >
+                    {d.code}
+                  </span>
+                )}
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    borderRadius: '10px',
+                    background: isSelected
+                      ? '#7c3aed'
+                      : stat.total > 0
+                      ? 'rgba(0, 0, 0, 0.06)'
+                      : 'transparent',
+                    color: isSelected
+                      ? '#ffffff'
+                      : stat.total > 0
+                      ? 'var(--notion-text-muted)'
+                      : 'var(--notion-text-dim)',
+                  }}
+                >
+                  {stat.total}
+                </span>
+                {stat.total > 0 && stat.percent === 100 && (
+                  <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 800 }}>✓</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Active Department Spotlight Banner */}
+      {selectedDeptObj && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 18px',
+            background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.07) 0%, rgba(99, 102, 241, 0.07) 100%)',
+            border: '1.5px solid rgba(124, 58, 237, 0.28)',
+            borderRadius: '12px',
+            marginBottom: '18px',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: '8px',
+                background: '#7c3aed',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 800,
+                fontSize: '12.5px',
+                boxShadow: '0 2px 6px rgba(124, 58, 237, 0.3)',
+              }}
+            >
+              {selectedDeptObj.code || <Building size={16} />}
+            </div>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--notion-text)' }}>
+                {selectedDeptObj.name} {selectedDeptObj.code ? `(${selectedDeptObj.code})` : ''} Checklist
+              </div>
+              <div style={{ fontSize: '11.5px', color: 'var(--notion-text-muted)', marginTop: '1px' }}>
+                Showing only checklists for {selectedDeptObj.name} • {selectedDeptStats.total} total items • {selectedDeptStats.completed} completed this cycle ({selectedDeptStats.percent}%)
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => handleOpenCreateModal(activeFrequency === 'ALL' ? 'DAILY' : (activeFrequency as RoutineFrequency))}
+              className="notion-btn notion-btn-primary"
+              style={{ fontSize: '11.5px', padding: '6px 14px', borderRadius: '7px', fontWeight: 700 }}
+            >
+              <Plus size={13} />
+              <span>Add {selectedDeptObj.name} Checklist Item</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectDept('ALL')}
+              className="notion-btn notion-btn-bordered"
+              style={{ fontSize: '11.5px', padding: '6px 12px', borderRadius: '7px' }}
+            >
+              Show All Departments
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Progress Cards Across 4 Cycles */}
       <div
@@ -831,38 +1163,42 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
                 gap: '5px',
                 padding: '4px 8px',
                 borderRadius: '8px',
-                background: deptFilter !== 'ALL' ? 'rgba(124, 58, 237, 0.09)' : 'var(--notion-card)',
-                border: deptFilter !== 'ALL' ? '1.5px solid #8b5cf6' : '1px solid var(--notion-border)',
+                background: activeDeptFilter !== 'ALL' ? 'rgba(124, 58, 237, 0.09)' : 'var(--notion-card)',
+                border: activeDeptFilter !== 'ALL' ? '1.5px solid #8b5cf6' : '1px solid var(--notion-border)',
               }}
             >
-              <Building size={12} style={{ color: deptFilter !== 'ALL' ? '#7c3aed' : 'var(--notion-text-muted)' }} />
-              <span style={{ fontSize: '11px', fontWeight: 700, color: deptFilter !== 'ALL' ? '#7c3aed' : 'var(--notion-text-muted)' }}>Dept:</span>
+              <Building size={12} style={{ color: activeDeptFilter !== 'ALL' ? '#7c3aed' : 'var(--notion-text-muted)' }} />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: activeDeptFilter !== 'ALL' ? '#7c3aed' : 'var(--notion-text-muted)' }}>Dept:</span>
               <select
-                value={String(deptFilter)}
-                onChange={(e) => setDeptFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+                value={String(activeDeptFilter)}
+                onChange={(e) => handleSelectDept(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
                 style={{
                   background: 'transparent',
                   border: 'none',
                   outline: 'none',
                   fontSize: '11.5px',
-                  fontWeight: deptFilter !== 'ALL' ? 700 : 500,
-                  color: deptFilter !== 'ALL' ? '#7c3aed' : 'var(--notion-text)',
+                  fontWeight: activeDeptFilter !== 'ALL' ? 700 : 500,
+                  color: activeDeptFilter !== 'ALL' ? '#7c3aed' : 'var(--notion-text)',
                   cursor: 'pointer',
                   maxWidth: '160px',
                 }}
               >
-                <option value="ALL">All Departments</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name} ({d.code})
-                  </option>
-                ))}
+                <option value="ALL">All Departments ({items.length})</option>
+                {allDepartmentOptions.map((d) => {
+                  const stat = deptStats.get(String(d.id));
+                  return (
+                    <option key={d.id} value={d.id}>
+                      {d.name} {d.code ? `[${d.code}]` : ''} ({stat?.total || 0})
+                    </option>
+                  );
+                })}
               </select>
-              {deptFilter !== 'ALL' && (
+              {activeDeptFilter !== 'ALL' && (
                 <button
                   type="button"
-                  onClick={() => setDeptFilter('ALL')}
+                  onClick={() => handleSelectDept('ALL')}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7c3aed', fontSize: '11px', padding: 0 }}
+                  title="Reset to All Departments"
                 >
                   ✕
                 </button>
@@ -944,7 +1280,7 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setDeptFilter('ALL');
+                  handleSelectDept('ALL');
                   setStaffFilter('ALL');
                   setOnlyMyTasks(false);
                   setStatusFilter('ALL');
@@ -1030,20 +1366,36 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
           <div style={{ padding: '52px 24px', textAlign: 'center', color: 'var(--notion-text-muted)' }}>
             <ListChecks size={32} style={{ opacity: 0.35, marginBottom: '10px' }} />
             <p style={{ margin: '0 0 6px 0', fontSize: '14.5px', fontWeight: 700, color: 'var(--notion-text)' }}>
-              No {activeFrequency !== 'ALL' ? activeFrequency.toLowerCase() : ''} checklist items in database
+              {selectedDeptObj
+                ? `No ${activeFrequency !== 'ALL' ? activeFrequency.toLowerCase() : ''} checklist items for ${selectedDeptObj.name}`
+                : `No ${activeFrequency !== 'ALL' ? activeFrequency.toLowerCase() : ''} checklist items in database`}
             </p>
             <p style={{ margin: '0 0 16px 0', fontSize: '12.5px', color: 'var(--notion-text-dim)' }}>
-              Create your real institutional operational checklists here. All items will be saved directly into the database.
+              {selectedDeptObj
+                ? `Create routine operational checklists specifically for ${selectedDeptObj.name}. All items will be saved directly into the database.`
+                : 'Create your real institutional operational checklists here. All items will be saved directly into the database.'}
             </p>
-            <button
-              type="button"
-              onClick={() => handleOpenCreateModal(activeFrequency === 'ALL' ? 'DAILY' : (activeFrequency as RoutineFrequency))}
-              className="notion-btn notion-btn-primary"
-              style={{ fontSize: '12px', padding: '7px 18px', borderRadius: '8px', fontWeight: 700 }}
-            >
-              <Plus size={13} />
-              <span>Create Checklist Item in Database</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => handleOpenCreateModal(activeFrequency === 'ALL' ? 'DAILY' : (activeFrequency as RoutineFrequency))}
+                className="notion-btn notion-btn-primary"
+                style={{ fontSize: '12px', padding: '7px 18px', borderRadius: '8px', fontWeight: 700 }}
+              >
+                <Plus size={13} />
+                <span>{selectedDeptObj ? `Add Checklist Item for ${selectedDeptObj.name}` : 'Create Checklist Item in Database'}</span>
+              </button>
+              {activeDeptFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectDept('ALL')}
+                  className="notion-btn notion-btn-bordered"
+                  style={{ fontSize: '12px', padding: '7px 14px', borderRadius: '8px' }}
+                >
+                  Show All Departments
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           filteredItems.map((item) => {
@@ -1104,9 +1456,17 @@ export const RoutineWorkView: React.FC<RoutineWorkViewProps> = ({
 
                         {getFrequencyBadge(item.frequency)}
 
-                        {item.department_code && (
-                          <span className="notion-tag tag-purple" style={{ fontSize: '10.5px' }}>
-                            {item.department_code}
+                        {(item.department_name || item.department_code) && (
+                          <span
+                            className="notion-tag tag-purple"
+                            style={{ fontSize: '10.5px', cursor: 'pointer' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (item.department) handleSelectDept(item.department);
+                            }}
+                            title={`Filter strictly by ${item.department_name || item.department_code}`}
+                          >
+                            🏢 {item.department_name || item.department_code}
                           </span>
                         )}
 

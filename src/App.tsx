@@ -761,6 +761,8 @@ const DashboardContent: React.FC = () => {
                   currentUser={currentUser}
                   departments={visibleDepartments}
                   staffList={staffList}
+                  selectedDeptId={selectedDeptId}
+                  onSelectDept={setSelectedDeptId}
                   onOpenCreateTask={canCreateTask ? () => setIsCreateTaskOpen(true) : undefined}
                 />
               )}
