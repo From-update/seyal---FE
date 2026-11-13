@@ -1,32 +1,25 @@
-# ==============================================================================
-# Task Tracker Enterprise - Frontend Dockerfile (Production Multi-Stage Build)
-# ==============================================================================
-
-# Stage 1: Build Vite React SPA
-FROM node:20-alpine AS build
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies first for Docker caching
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
-# Copy source and compile production bundle
-COPY . .
+COPY . ./
+ENV API_URL=http://api:8000
 RUN npm run build
 
-# Stage 2: Serve with lightweight Nginx
-FROM nginx:alpine
+FROM node:20-alpine AS runner
+WORKDIR /app
 
-# Copy custom Nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+ENV NODE_ENV=production
+ENV API_URL=http://api:8000
 
-# Copy compiled static assets from build stage
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules ./node_modules
 
-# Symlink nextup subpath for multi-app gateway compatibility
-RUN ln -s /usr/share/nginx/html /usr/share/nginx/html/nextup
+EXPOSE 3000
 
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "start"]

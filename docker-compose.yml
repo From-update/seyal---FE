@@ -1,0 +1,10 @@
+services:
+  web:
+    build: .
+    container_name: seyal_web
+    restart: always
+    environment:
+      NODE_ENV: "production"
+      API_URL: "http://localhost:8000"
+    ports:
+      - "3000:3000"
