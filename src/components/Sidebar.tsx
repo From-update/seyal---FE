@@ -120,6 +120,18 @@ export function Sidebar({
 
   return (
     <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col h-screen select-none text-sidebar-foreground">
+      {/* Brand Logo Header */}
+      <div className="px-4 py-2.5 border-b border-sidebar-border bg-black/95 flex items-center justify-between">
+        <img
+          src="/logo.jpg"
+          alt="Seyal Logo"
+          className="h-7 w-auto object-contain rounded"
+        />
+        <span className="text-[10px] font-semibold tracking-wider uppercase text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/60">
+          PRO
+        </span>
+      </div>
+
       {/* Workspace Switcher Header */}
       <div className="p-3 border-b border-sidebar-border relative">
         <button

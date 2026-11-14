@@ -110,7 +110,7 @@ export async function apiRequest<T = any>(
 
 export const api = {
   // Auth
-  register: (payload: { email: string; password: string; name?: string }) =>
+  register: (payload: { email: string; password: string; name?: string; phone?: string; role?: string }) =>
     apiRequest('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
 
   login: (payload: { email: string; password: string }) =>
@@ -119,14 +119,14 @@ export const api = {
   socialAuth: (provider: 'google' | 'facebook' | 'apple', payload: any) =>
     apiRequest(`/auth/social/${provider}`, { method: 'POST', body: JSON.stringify(payload) }),
 
-  requestOtp: (target: string | { phone?: string; email?: string }) => {
+  requestOtp: (target: string | { phone?: string; email?: string; provider?: string }) => {
     const body = typeof target === 'string'
       ? (target.includes('@') ? { email: target } : { phone: target })
       : target;
     return apiRequest('/auth/otp/request', { method: 'POST', body: JSON.stringify(body) });
   },
 
-  verifyOtp: (payload: { phone?: string; email?: string; code: string; name?: string }) =>
+  verifyOtp: (payload: { phone?: string; email?: string; code: string; name?: string; provider?: string }) =>
     apiRequest('/auth/otp/verify', { method: 'POST', body: JSON.stringify(payload) }),
 
   getMe: () => apiRequest('/me'),
