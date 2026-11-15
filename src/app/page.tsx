@@ -48,8 +48,12 @@ export default function AppDashboard() {
 
   if (isLoading || !user) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center space-y-3">
-        <span className="text-4xl animate-bounce">🚀</span>
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center space-y-4">
+        <img
+          src="/logo.jpg"
+          alt="Seyal"
+          className="h-12 w-auto object-contain rounded-xl shadow-md border border-neutral-800 animate-pulse"
+        />
         <p className="text-xs font-semibold text-gray-500">Loading Seyal Workspace...</p>
       </div>
     );
