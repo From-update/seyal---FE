@@ -283,7 +283,7 @@ export function GmailModal({ onClose, onTaskCreated }: GmailModalProps) {
                 required
                 value={composeTo}
                 onChange={(e) => setComposeTo(e.target.value)}
-                placeholder="colleague@apexcollege.edu"
+                placeholder="colleague@lexiontech.com"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs"
               />
             </div>

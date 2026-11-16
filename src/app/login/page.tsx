@@ -516,7 +516,7 @@ export default function LoginPage() {
                     autoFocus
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="youremail@rathinam.in"
+                    placeholder="you@lexiontech.com or you@seyal.app"
                     className="block w-full pl-9 pr-3 py-2 rounded-xl text-sm focus:outline-none bg-transparent placeholder:text-neutral-400 text-[#14251F]"
                   />
                 </div>
@@ -1060,7 +1060,7 @@ export default function LoginPage() {
             </p>
             <div className="mt-3.5 p-2.5 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-left space-y-1 text-neutral-700">
               <div>📧 <strong>Admin Support:</strong> support@seyal.app</div>
-              <div>🏫 <strong>Campus Portal:</strong> admin@rathinam.in</div>
+              <div>🏢 <strong>Enterprise Portal:</strong> admin@lexiontech.com</div>
             </div>
             <button
               type="button"

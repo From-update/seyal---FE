@@ -125,7 +125,7 @@ export default function OnboardingPage() {
                   {selectedMode === 'join' && <span className="text-blue-600 font-bold">✓</span>}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Join an existing college or company workspace.
+                  Join an existing company or organization workspace.
                 </p>
                 {selectedMode === 'join' && (
                   <div className="mt-3">

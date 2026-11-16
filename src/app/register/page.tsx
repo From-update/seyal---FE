@@ -362,7 +362,7 @@ export default function RegisterPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@rathinam.in"
+                    placeholder="you@lexiontech.com or you@seyal.app"
                     className="block w-full pl-9 pr-3 py-2 rounded-xl text-xs sm:text-sm focus:outline-none bg-transparent placeholder:text-neutral-400 text-[#14251F]"
                   />
                 </div>

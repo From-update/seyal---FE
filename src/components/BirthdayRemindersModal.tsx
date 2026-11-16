@@ -436,7 +436,7 @@ export function BirthdayRemindersModal({ onClose, onTaskCreated }: BirthdayRemin
                   <label className="block font-medium text-gray-700 mb-1">Email Address</label>
                   <input
                     type="email"
-                    placeholder="person@apexcollege.edu"
+                    placeholder="colleague@lexiontech.com"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs"
