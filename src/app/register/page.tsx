@@ -17,6 +17,7 @@ import {
   Globe,
   Sparkles,
   Briefcase,
+  Building2,
   ChevronDown,
   X,
   FileText,
@@ -35,7 +36,8 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [phonePrefix, setPhonePrefix] = useState('+91');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [role, setRole] = useState('');
+  const [accountType, setAccountType] = useState<'personal' | 'company' | 'organization'>('personal');
+  const [organizationName, setOrganizationName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(true);
@@ -85,8 +87,8 @@ export default function RegisterPage() {
       setError('Please enter a valid work email address');
       return;
     }
-    if (!role) {
-      setError('Please select your department or role');
+    if ((accountType === 'company' || accountType === 'organization') && !organizationName.trim()) {
+      setError(`Please enter your ${accountType === 'company' ? 'company' : 'organization'} name`);
       return;
     }
     if (password.length < 6) {
@@ -110,7 +112,8 @@ export default function RegisterPage() {
         email: email.trim().toLowerCase(),
         password,
         phone: fullPhone || undefined,
-        role: role || undefined,
+        account_type: accountType,
+        organization_name: (accountType !== 'personal' && organizationName.trim()) ? organizationName.trim() : undefined,
       });
 
       await loginUser(res.tokens, res.default_workspace_id);
@@ -401,33 +404,52 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* Department / Role Dropdown */}
+              {/* Account / Workspace Type */}
               <div>
                 <label className="block text-xs font-semibold text-[#14251F] mb-1">
-                  Department / Role <span className="text-rose-500">*</span>
+                  Account Type <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative rounded-xl border border-neutral-300 focus-within:border-[#08745B] focus-within:ring-2 focus-within:ring-[#08745B]/20 transition bg-white">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#77847E]">
-                    <Briefcase className="h-4 w-4" />
+                    <Building2 className="h-4 w-4" />
                   </div>
                   <select
                     required
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
+                    value={accountType}
+                    onChange={(e) => setAccountType(e.target.value as 'personal' | 'company' | 'organization')}
                     className="block w-full pl-9 pr-8 py-2 rounded-xl text-xs sm:text-sm focus:outline-none bg-transparent text-[#14251F] appearance-none cursor-pointer"
                   >
-                    <option value="" disabled>Select role</option>
-                    <option value="General Manager / Principal">General Manager / Principal</option>
-                    <option value="Head of Department (HOD) / Manager">Head of Department (HOD) / Manager</option>
-                    <option value="Faculty / Team Lead">Faculty / Team Lead</option>
-                    <option value="Staff / Employee">Staff / Employee</option>
-                    <option value="Student / Member">Student / Member</option>
+                    <option value="personal">Personal</option>
+                    <option value="company">Company</option>
+                    <option value="organization">Organization</option>
                   </select>
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-[#77847E]">
                     <ChevronDown className="h-4 w-4" />
                   </div>
                 </div>
               </div>
+
+              {/* Company / Organization Name (Conditional if Company or Organization) */}
+              {(accountType === 'company' || accountType === 'organization') && (
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-[#14251F] mb-1">
+                    {accountType === 'company' ? 'Company Name' : 'Organization Name'} <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative rounded-xl border border-neutral-300 focus-within:border-[#08745B] focus-within:ring-2 focus-within:ring-[#08745B]/20 transition bg-white">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#77847E]">
+                      <Building2 className="h-4 w-4" />
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={organizationName}
+                      onChange={(e) => setOrganizationName(e.target.value)}
+                      placeholder={accountType === 'company' ? 'e.g. Lexiontech Inc.' : 'e.g. SEYAL Foundation'}
+                      className="block w-full pl-9 pr-3 py-2 rounded-xl text-xs sm:text-sm focus:outline-none bg-transparent placeholder:text-neutral-400 text-[#14251F]"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Password */}
               <div>

@@ -110,8 +110,15 @@ export async function apiRequest<T = any>(
 
 export const api = {
   // Auth
-  register: (payload: { email: string; password: string; name?: string; phone?: string; role?: string }) =>
-    apiRequest('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
+  register: (payload: {
+    email: string;
+    password: string;
+    name?: string;
+    phone?: string;
+    role?: string;
+    account_type?: string;
+    organization_name?: string;
+  }) => apiRequest('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
 
   login: (payload: { email: string; password: string }) =>
     apiRequest('/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
