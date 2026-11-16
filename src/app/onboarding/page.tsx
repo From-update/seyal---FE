@@ -45,7 +45,10 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div
+      className="min-h-screen bg-neutral-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8"
+      suppressHydrationWarning
+    >
       <div className="sm:mx-auto sm:w-full sm:max-w-lg">
         <div className="text-center">
           <span className="text-4xl">🚀</span>

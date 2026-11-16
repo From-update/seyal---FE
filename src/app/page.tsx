@@ -48,7 +48,10 @@ export default function AppDashboard() {
 
   if (isLoading || !user) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center space-y-4">
+      <div
+        className="min-h-screen bg-white flex flex-col items-center justify-center space-y-4"
+        suppressHydrationWarning
+      >
         <img
           src="/logo.jpg"
           alt="Seyal"
@@ -81,7 +84,10 @@ export default function AppDashboard() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-white">
+    <div
+      className="flex h-screen w-screen overflow-hidden bg-white"
+      suppressHydrationWarning
+    >
       {/* Sidebar Navigation */}
       <Sidebar
         currentView={currentView}
