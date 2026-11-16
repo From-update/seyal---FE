@@ -249,7 +249,8 @@ export default function RegisterPage() {
 
           {/* Realistic Dashboard Mockup */}
           <DashboardShowcase
-            userRole="Manager"
+            userName="Sanjay A"
+            avatarInitials="SA"
             welcomeSubtitle="Tasks and department progress & transactions"
             showMobile={false}
           />

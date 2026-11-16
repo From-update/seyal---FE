@@ -16,13 +16,17 @@ import {
 import { SeyalLogo } from './SeyalLogo';
 
 export interface DashboardShowcaseProps {
-  userRole?: string;
+  userName?: string;
+  phoneUserName?: string;
+  avatarInitials?: string;
   welcomeSubtitle?: string;
   showMobile?: boolean;
 }
 
 export function DashboardShowcase({
-  userRole = 'GM',
+  userName = 'Prabanjan R',
+  phoneUserName = 'Sanjay A',
+  avatarInitials = 'PR',
   welcomeSubtitle = "Here's an overview of your team's work and progress.",
   showMobile = true,
 }: DashboardShowcaseProps) {
@@ -62,8 +66,8 @@ export function DashboardShowcase({
                   <Bell className="w-2.5 h-2.5" />
                 </div>
                 <div className="flex items-center space-x-0.5 pl-0.5">
-                  <div className="w-4 h-4 rounded-full bg-gradient-to-br from-[#08745B] to-[#119875] text-[9px] font-bold text-white flex items-center justify-center">
-                    GM
+                  <div className="w-4 h-4 rounded-full bg-gradient-to-br from-[#08745B] to-[#119875] text-[8px] font-bold text-white flex items-center justify-center">
+                    {avatarInitials}
                   </div>
                   <ChevronDown className="w-2 h-2 text-neutral-400" />
                 </div>
@@ -75,7 +79,7 @@ export function DashboardShowcase({
               {/* Welcome text */}
               <div>
                 <h4 className="text-[11px] sm:text-[12px] font-bold text-neutral-900 leading-tight">
-                  Welcome, {userRole} 👋
+                  Welcome, {userName} 👋
                 </h4>
                 <p className="text-[9px] text-neutral-500 leading-tight">
                   {welcomeSubtitle}
@@ -185,7 +189,7 @@ export function DashboardShowcase({
                   <div className="space-y-1 mt-0.5 text-[8px] sm:text-[8.5px]">
                     <div className="flex items-center justify-between py-0.5 border-b border-neutral-100">
                       <span className="text-neutral-700 truncate max-w-[95px] flex items-center gap-1">
-                        <span>📋</span> CCTV Integration
+                        <span>📋</span> SEYAL Workflow
                       </span>
                       <span className="px-1 py-0.2 rounded text-[7.5px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                         In Progress
@@ -193,7 +197,7 @@ export function DashboardShowcase({
                     </div>
                     <div className="flex items-center justify-between py-0.5 border-b border-neutral-100">
                       <span className="text-neutral-700 truncate max-w-[95px] flex items-center gap-1">
-                        <span>📋</span> NextUp UI Changes
+                        <span>📋</span> SEYAL Core UI
                       </span>
                       <span className="px-1 py-0.2 rounded text-[7.5px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         Completed
@@ -201,7 +205,7 @@ export function DashboardShowcase({
                     </div>
                     <div className="flex items-center justify-between py-0.5 border-b border-neutral-100">
                       <span className="text-neutral-700 truncate max-w-[95px] flex items-center gap-1">
-                        <span>📋</span> AI Chatbot Training
+                        <span>📋</span> SEYAL AI Agent
                       </span>
                       <span className="px-1 py-0.2 rounded text-[7.5px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
                         In Progress
@@ -209,7 +213,7 @@ export function DashboardShowcase({
                     </div>
                     <div className="flex items-center justify-between py-0.5">
                       <span className="text-neutral-700 truncate max-w-[95px] flex items-center gap-1">
-                        <span>📋</span> 15 Days Report
+                        <span>📋</span> Milestone Audit
                       </span>
                       <span className="px-1 py-0.2 rounded text-[7.5px] font-semibold bg-orange-50 text-orange-700 border border-orange-200">
                         Pending
@@ -241,7 +245,7 @@ export function DashboardShowcase({
               </div>
 
               <div className="mb-1.5">
-                <div className="text-[9px] font-bold text-neutral-900 leading-tight">Hi, Manager 👋</div>
+                <div className="text-[9px] font-bold text-neutral-900 leading-tight">Hi, {phoneUserName} 👋</div>
                 <div className="text-[7px] text-neutral-500">Track and manage your work.</div>
               </div>
 

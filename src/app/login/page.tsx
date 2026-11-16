@@ -366,7 +366,11 @@ export default function LoginPage() {
           </div>
 
           {/* Interactive / Realistic Dashboard Mockup */}
-          <DashboardShowcase />
+          <DashboardShowcase
+            userName="Prabanjan R"
+            phoneUserName="Sanjay A"
+            avatarInitials="PR"
+          />
         </div>
 
         {/* Bottom subtle copyright / branding note */}
@@ -612,7 +616,7 @@ export default function LoginPage() {
                         autoFocus
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@company.com or gm@seyal.app"
+                        placeholder="you@lexiontech.com or you@seyal.app"
                         className="block w-full pl-9 pr-3 py-2 rounded-xl text-sm focus:outline-none bg-transparent placeholder:text-neutral-400 text-[#14251F]"
                       />
                     </div>
