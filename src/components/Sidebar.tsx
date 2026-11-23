@@ -188,18 +188,10 @@ export function Sidebar({
             </div>
 
             <div className="border-t border-gray-100 mt-1 pt-1 space-y-0.5">
-              <Link
-                href="/subdivisions"
-                className="w-full text-left px-3 py-1.5 hover:bg-emerald-50 flex items-center space-x-2 text-emerald-800 font-semibold"
-              >
-                <Layers className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Switch Subdivision Hub</span>
-              </Link>
-
               {(user?.is_superuser || user?.is_staff) && (
                 <Link
                   href="/superadmin"
-                  className="w-full text-left px-3 py-1.5 hover:bg-amber-50 flex items-center space-x-2 text-amber-900 font-semibold"
+                  className="w-full text-left px-3 py-1.5 hover:bg-amber-50 flex items-center space-x-2 text-amber-900 font-semibold rounded-md"
                 >
                   <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
                   <span>Superadmin Portal</span>

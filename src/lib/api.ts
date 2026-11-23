@@ -126,14 +126,24 @@ export const api = {
   socialAuth: (provider: 'google' | 'facebook' | 'apple', payload: any) =>
     apiRequest(`/auth/social/${provider}`, { method: 'POST', body: JSON.stringify(payload) }),
 
-  requestOtp: (target: string | { phone?: string; email?: string; provider?: string }) => {
+  requestOtp: (target: string | { phone?: string; email?: string; provider?: string; purpose?: string }) => {
     const body = typeof target === 'string'
       ? (target.includes('@') ? { email: target } : { phone: target })
       : target;
     return apiRequest('/auth/otp/request', { method: 'POST', body: JSON.stringify(body) });
   },
 
-  verifyOtp: (payload: { phone?: string; email?: string; code: string; name?: string; provider?: string }) =>
+  verifyOtp: (payload: {
+    phone?: string;
+    email?: string;
+    code: string;
+    name?: string;
+    provider?: string;
+    password?: string;
+    subdivision?: string;
+    organization_name?: string;
+    role?: string;
+  }) =>
     apiRequest('/auth/otp/verify', { method: 'POST', body: JSON.stringify(payload) }),
 
   getMe: () => apiRequest('/me'),
@@ -329,6 +339,13 @@ export const api = {
     apiRequest('/superadmin/organisations', { method: 'POST', body: JSON.stringify(payload) }),
   updateSuperadminOrganisation: (id: string, payload: any) =>
     apiRequest(`/superadmin/organisations/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  getSuperadminUsers: () => apiRequest('/superadmin/users'),
+  createSuperadminUser: (payload: any) =>
+    apiRequest('/superadmin/users', { method: 'POST', body: JSON.stringify(payload) }),
+  updateSuperadminUser: (id: string, payload: any) =>
+    apiRequest(`/superadmin/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteSuperadminUser: (id: string) =>
+    apiRequest(`/superadmin/users/${id}`, { method: 'DELETE' }),
 
   // Organisation Subdivision
   getOrgOverview: (orgId: string) => apiRequest(`/organisations/${orgId}/overview`),

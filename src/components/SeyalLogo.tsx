@@ -7,6 +7,7 @@ interface SeyalLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   showText?: boolean;
+  showIconOnly?: boolean;
 }
 
 export function SeyalLogo({
@@ -14,8 +15,10 @@ export function SeyalLogo({
   size = 'md',
   className = '',
   showText = true,
+  showIconOnly = false,
 }: SeyalLogoProps) {
   const isDark = theme === 'dark';
+  const shouldShowText = showText && !showIconOnly;
 
   const sizeConfig = {
     sm: { icon: 'w-7 h-7 rounded-lg text-sm', check: 'w-4 h-4', bar: 'h-6', tamil: 'text-base', english: 'text-[9px] tracking-[0.2em]' },
@@ -48,7 +51,7 @@ export function SeyalLogo({
         </svg>
       </div>
 
-      {showText && (
+      {shouldShowText && (
         <>
           {/* Vertical Divider */}
           <div

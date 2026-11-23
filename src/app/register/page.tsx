@@ -23,6 +23,8 @@ import {
   FileText,
   ShieldCheck,
   CheckCircle2,
+  Sliders,
+  AlertCircle,
 } from 'lucide-react';
 import { SeyalLogo } from '@/components/SeyalLogo';
 import { DashboardShowcase } from '@/components/DashboardShowcase';
@@ -36,8 +38,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [phonePrefix, setPhonePrefix] = useState('+91');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [role, setRole] = useState('');
-  const [accountType, setAccountType] = useState<'personal' | 'company' | 'organization'>('personal');
+  const [subdivision, setSubdivision] = useState<'organisation' | 'personal' | 'freelancer' | 'customize'>('organisation');
   const [organizationName, setOrganizationName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -52,6 +53,13 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [termsModal, setTermsModal] = useState<null | 'terms' | 'privacy'>(null);
 
+  // OTP Verification Modal states
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpError, setOtpError] = useState('');
+
   // Google Sign-in OTP states
   const [showGoogleModal, setShowGoogleModal] = useState(false);
   const [googleEmail, setGoogleEmail] = useState('');
@@ -63,11 +71,19 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (user) {
-      router.push('/subdivisions');
+      router.push('/');
     }
   }, [user, router]);
 
-  // Google cooldown timer
+  // Cooldown timers
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (otpCooldown > 0) {
+      timer = setTimeout(() => setOtpCooldown(otpCooldown - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [otpCooldown]);
+
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (googleCooldown > 0) {
@@ -76,7 +92,12 @@ export default function RegisterPage() {
     return () => clearTimeout(timer);
   }, [googleCooldown]);
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const getFullPhone = () => {
+    return phoneNumber.trim() ? `${phonePrefix}${phoneNumber.trim().replace(/^0+/, '')}` : '';
+  };
+
+  // Step 1: Request OTP and trigger verification modal
+  const handleStartRegisterOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -88,8 +109,8 @@ export default function RegisterPage() {
       setError('Please enter a valid work email address');
       return;
     }
-    if ((accountType === 'company' || accountType === 'organization') && !organizationName.trim()) {
-      setError(`Please enter your ${accountType === 'company' ? 'company' : 'organization'} name`);
+    if ((subdivision === 'organisation' || subdivision === 'customize') && !organizationName.trim()) {
+      setError(`Please enter your ${subdivision === 'organisation' ? 'organisation' : 'workspace'} name`);
       return;
     }
     if (password.length < 6) {
@@ -107,23 +128,69 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      const fullPhone = phoneNumber.trim() ? `${phonePrefix}${phoneNumber.trim().replace(/^0+/, '')}` : '';
-      const res = await api.register({
-        name: fullName.trim(),
+      const fullPhone = getFullPhone();
+      await api.requestOtp({
         email: email.trim().toLowerCase(),
-        password,
         phone: fullPhone || undefined,
-        role: role || undefined,
-        account_type: accountType,
-        organization_name: (accountType !== 'personal' && organizationName.trim()) ? organizationName.trim() : undefined,
+        purpose: 'register',
+      });
+
+      setShowOtpModal(true);
+      setOtpError('');
+      setOtpCode('');
+      setOtpCooldown(45);
+    } catch (err: any) {
+      setError(err?.data?.error || err.message || 'Failed to dispatch verification code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 2: Verify OTP and save user in DB with workspace profile creation
+  const handleVerifyOtpAndCreateWorkspace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpCode || otpCode.trim().length !== 6) {
+      setOtpError('Please enter the 6-digit verification code');
+      return;
+    }
+
+    setOtpError('');
+    setOtpVerifying(true);
+    try {
+      const fullPhone = getFullPhone();
+      const res = await api.verifyOtp({
+        email: email.trim().toLowerCase(),
+        phone: fullPhone || undefined,
+        code: otpCode.trim(),
+        name: fullName.trim(),
+        password,
+        subdivision,
+        organization_name: (subdivision === 'organisation' || subdivision === 'customize') ? organizationName.trim() : undefined,
       });
 
       await loginUser(res.tokens, res.default_workspace_id);
-      router.push('/subdivisions');
+      setShowOtpModal(false);
+      router.push('/');
     } catch (err: any) {
-      setError(err?.data?.error || err.message || 'Registration failed. Please check your details.');
+      setOtpError(err?.data?.error || err.message || 'Invalid or expired verification code');
     } finally {
-      setLoading(false);
+      setOtpVerifying(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (otpCooldown > 0) return;
+    setOtpError('');
+    try {
+      const fullPhone = getFullPhone();
+      await api.requestOtp({
+        email: email.trim().toLowerCase(),
+        phone: fullPhone || undefined,
+        purpose: 'register',
+      });
+      setOtpCooldown(45);
+    } catch (err: any) {
+      setOtpError(err?.data?.error || err.message || 'Failed to resend code');
     }
   };
 
@@ -145,7 +212,7 @@ export default function RegisterPage() {
     setGoogleError('');
     setGoogleLoading(true);
     try {
-      const res = await api.requestOtp({ email: cleanEmail, provider: 'google' });
+      const res = await api.requestOtp({ email: cleanEmail, provider: 'google', purpose: 'register' });
       setGoogleOtpSent(true);
       setGoogleCooldown(res.cooldown_seconds || 45);
       setGoogleOtpCode('');
@@ -172,10 +239,12 @@ export default function RegisterPage() {
         code: googleOtpCode.trim(),
         provider: 'google',
         name: displayName,
+        subdivision,
+        organization_name: (subdivision === 'organisation' || subdivision === 'customize') ? organizationName.trim() : undefined,
       });
       await loginUser(res.tokens, res.default_workspace_id);
       setShowGoogleModal(false);
-      router.push('/subdivisions');
+      router.push('/');
     } catch (err: any) {
       setGoogleError(err?.data?.error || err.message || 'Invalid or expired OTP code');
     } finally {
@@ -200,7 +269,7 @@ export default function RegisterPage() {
       };
       const res = await api.socialAuth('google', mockSocialPayload);
       await loginUser(res.tokens, res.default_workspace_id);
-      router.push('/subdivisions');
+      router.push('/');
     } catch (err: any) {
       setError(err?.data?.error || err.message || `${provider} registration failed`);
     } finally {
@@ -214,45 +283,36 @@ export default function RegisterPage() {
       suppressHydrationWarning
     >
       {/* ========================================================================= */}
-      {/* LEFT PANEL: Create your SEYAL Workspace Showcase                           */}
+      {/* LEFT PANEL: Showcase Brand Visualizer                                     */}
       {/* ========================================================================= */}
-      <section className="lg:col-span-6 xl:col-span-6 bg-[#042e24] relative overflow-hidden hidden lg:flex flex-col justify-between p-4 sm:p-6 lg:p-7 xl:p-8 text-white h-full box-border select-none">
-        {/* Background Video */}
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
-        >
-          <source src="/seyal-login-bg.mp4" type="video/mp4" />
-        </video>
+      <section className="relative hidden lg:flex lg:col-span-6 xl:col-span-7 bg-[#064B3B] p-6 xl:p-8 flex-col justify-between overflow-hidden select-none">
+        {/* Subtle radial ambient light */}
+        <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#10B981]/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-[#08745B]/40 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Emerald gradient overlay for contrast & readability */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#042e24]/75 via-[#064b3b]/65 to-[#08745b]/75 pointer-events-none z-[1]" />
-
-        {/* Ambient background glow accents */}
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-[#119875]/20 blur-3xl pointer-events-none z-[2]" />
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-[#10b981]/15 blur-3xl pointer-events-none z-[2]" />
-
-        {/* Top: SEYAL Logo */}
-        <div className="relative z-10 shrink-0">
-          <SeyalLogo theme="dark" size="md" />
+        {/* Top Branding */}
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <SeyalLogo size="md" className="text-white drop-shadow-sm" />
+          </div>
+          <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-950/40 border border-emerald-500/20 text-[11px] text-emerald-200">
+            <Globe className="w-3 h-3 text-emerald-400" />
+            <span>English</span>
+          </div>
         </div>
 
-        {/* Center: Headings & Mockup */}
-        <div className="relative z-10 my-auto py-2 shrink-0">
-          <div className="text-center max-w-lg mx-auto mb-3 xl:mb-4">
-            <h1 className="text-xl sm:text-2xl xl:text-3xl font-extrabold text-white tracking-tight leading-snug">
+        {/* Middle: Headline + Realistic Dashboard Mockup */}
+        <div className="relative z-10 my-auto py-2 xl:py-4 flex flex-col items-center">
+          <div className="text-center max-w-lg mb-3">
+            <h1 className="text-2xl xl:text-3xl font-extrabold text-white tracking-tight leading-snug drop-shadow-sm">
               Create your{' '}
               <span className="text-[#34D399] drop-shadow-sm">SEYAL Workspace</span>
             </h1>
             <p className="mt-1.5 text-xs sm:text-sm text-emerald-100/80 leading-relaxed max-w-md mx-auto">
-              Register to assign work, track progress and collaborate with your team in one platform.
+              Register with OTP authentication, select your subdivision, and collaborate with your team in one unified platform.
             </p>
           </div>
 
-          {/* Realistic Dashboard Mockup */}
           <DashboardShowcase
             userName="Sanjay A"
             avatarInitials="SA"
@@ -273,66 +333,48 @@ export default function RegisterPage() {
       {/* ========================================================================= */}
       {/* RIGHT PANEL: Create Your SEYAL Account Form                                */}
       {/* ========================================================================= */}
-      <section className="col-span-12 lg:col-span-6 xl:col-span-6 bg-white flex flex-col justify-between p-4 sm:p-6 lg:p-7 xl:p-8 relative h-full overflow-y-auto box-border">
-        {/* Top Bar: Mobile Logo & Language Switcher */}
-        <div className="flex items-center justify-between w-full shrink-0 mb-1">
-          {/* Mobile-only logo */}
-          <div className="lg:hidden">
-            <SeyalLogo theme="light" size="sm" />
+      <section className="w-full flex-1 lg:col-span-6 xl:col-span-5 bg-white p-5 sm:p-7 lg:p-8 flex flex-col justify-between overflow-y-auto">
+        {/* Top Header */}
+        <div className="flex items-center justify-between pb-2 border-b border-neutral-100 shrink-0">
+          <div className="lg:hidden flex items-center space-x-2">
+            <SeyalLogo size="sm" />
+          </div>
+          <div className="hidden lg:block">
+            <SeyalLogo size="sm" showIconOnly />
           </div>
 
-          {/* Language Toggle */}
-          <div className="ml-auto flex items-center space-x-1 text-xs bg-[#EDF6F1] p-0.5 rounded-xl border border-emerald-200/60">
-            <Globe className="w-3.5 h-3.5 text-[#08745B] ml-1.5" />
+          <div className="flex items-center space-x-1.5 text-xs font-medium text-[#77847E]">
+            <Globe className="w-3.5 h-3.5 text-[#08745B]" />
             <button
-              onClick={() => setLang('en')}
-              className={`px-2 py-0.5 rounded-lg font-semibold transition text-[11px] ${
-                lang === 'en'
-                  ? 'bg-[#08745B] text-white shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
+              type="button"
+              onClick={() => setLang(lang === 'en' ? 'ta' : 'en')}
+              className="hover:text-[#08745B] transition font-semibold"
             >
-              English
-            </button>
-            <button
-              onClick={() => setLang('ta')}
-              className={`px-2 py-0.5 rounded-lg font-semibold transition text-[11px] ${
-                lang === 'ta'
-                  ? 'bg-[#08745B] text-white shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
-            >
-              தமிழ்
+              {lang === 'en' ? 'தமிழ்' : 'English'}
             </button>
           </div>
         </div>
 
-        {/* Center: Main Registration Card */}
-        <div className="w-full max-w-[480px] mx-auto my-auto py-1 shrink-0">
-          {/* Logo on Right Panel */}
-          <div className="text-center mb-3">
-            <div className="flex justify-center mb-1.5">
-              <SeyalLogo theme="light" size="md" />
-            </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[#14251F] tracking-tight">
-              Create Your <span className="text-[#08745B]">SEYAL Account</span>
+        {/* Form Body */}
+        <div className="my-auto py-3 max-w-sm sm:max-w-md mx-auto w-full">
+          <div className="text-center mb-4">
+            <h2 className="text-xl sm:text-2xl font-black text-[#14251F] tracking-tight">
+              Create Your SEYAL Account
             </h2>
-            <p className="text-xs text-[#77847E] mt-0.5 font-medium">
-              Get started with your work management workspace
+            <p className="mt-1 text-xs text-[#77847E]">
+              OTP-verified registration &amp; instant workspace setup
             </p>
           </div>
 
-          {/* Error Banner */}
           {error && (
-            <div className="mb-3 p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start gap-2">
-              <span className="font-semibold text-rose-800">Error:</span>
-              <span className="flex-1">{error}</span>
+            <div className="mb-3 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
-          {/* Registration Form */}
-          <form onSubmit={handleRegister} className="space-y-2.5">
-            {/* Grid 2 Columns */}
+          <form onSubmit={handleStartRegisterOtp} className="space-y-3">
+            {/* Grid 2 Columns: Full Name + Work Email */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* Full Name */}
               <div>
@@ -368,12 +410,15 @@ export default function RegisterPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@lexiontech.com or you@seyal.app"
+                    placeholder="you@company.com"
                     className="block w-full pl-9 pr-3 py-2 rounded-xl text-xs sm:text-sm focus:outline-none bg-transparent placeholder:text-neutral-400 text-[#14251F]"
                   />
                 </div>
               </div>
+            </div>
 
+            {/* Grid 2 Columns: Phone Number + Subdivision */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* Phone Number with Country Code */}
               <div>
                 <label className="block text-xs font-semibold text-[#14251F] mb-1">
@@ -406,10 +451,10 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* Account / Workspace Type */}
+              {/* Subdivision / Workspace Type */}
               <div>
                 <label className="block text-xs font-semibold text-[#14251F] mb-1">
-                  Account Type <span className="text-rose-500">*</span>
+                  Subdivision / Workspace <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative rounded-xl border border-neutral-300 focus-within:border-[#08745B] focus-within:ring-2 focus-within:ring-[#08745B]/20 transition bg-white">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#77847E]">
@@ -417,42 +462,46 @@ export default function RegisterPage() {
                   </div>
                   <select
                     required
-                    value={accountType}
-                    onChange={(e) => setAccountType(e.target.value as 'personal' | 'company' | 'organization')}
-                    className="block w-full pl-9 pr-8 py-2 rounded-xl text-xs sm:text-sm focus:outline-none bg-transparent text-[#14251F] appearance-none cursor-pointer"
+                    value={subdivision}
+                    onChange={(e) => setSubdivision(e.target.value as any)}
+                    className="block w-full pl-9 pr-8 py-2 rounded-xl text-xs sm:text-sm focus:outline-none bg-transparent text-[#14251F] appearance-none cursor-pointer font-medium"
                   >
-                    <option value="personal">Personal</option>
-                    <option value="company">Company</option>
-                    <option value="organization">Organization</option>
+                    <option value="organisation">Organisation (Enterprise &amp; Teams)</option>
+                    <option value="personal">Personal (Individual Productivity)</option>
+                    <option value="freelancer">Freelancer (Client &amp; Deliverables)</option>
+                    <option value="customize">Customize (Configurable Engine)</option>
                   </select>
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-[#77847E]">
                     <ChevronDown className="h-4 w-4" />
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* Company / Organization Name (Conditional if Company or Organization) */}
-              {(accountType === 'company' || accountType === 'organization') && (
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-[#14251F] mb-1">
-                    {accountType === 'company' ? 'Company Name' : 'Organization Name'} <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative rounded-xl border border-neutral-300 focus-within:border-[#08745B] focus-within:ring-2 focus-within:ring-[#08745B]/20 transition bg-white">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#77847E]">
-                      <Building2 className="h-4 w-4" />
-                    </div>
-                    <input
-                      type="text"
-                      required
-                      value={organizationName}
-                      onChange={(e) => setOrganizationName(e.target.value)}
-                      placeholder={accountType === 'company' ? 'e.g. Lexiontech Inc.' : 'e.g. SEYAL Foundation'}
-                      className="block w-full pl-9 pr-3 py-2 rounded-xl text-xs sm:text-sm focus:outline-none bg-transparent placeholder:text-neutral-400 text-[#14251F]"
-                    />
+            {/* Organisation / Custom Workspace Name */}
+            {(subdivision === 'organisation' || subdivision === 'customize') && (
+              <div>
+                <label className="block text-xs font-semibold text-[#14251F] mb-1">
+                  {subdivision === 'organisation' ? 'Organisation Name' : 'Custom Workspace Name'} <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative rounded-xl border border-neutral-300 focus-within:border-[#08745B] focus-within:ring-2 focus-within:ring-[#08745B]/20 transition bg-white">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#77847E]">
+                    <Building2 className="h-4 w-4" />
                   </div>
+                  <input
+                    type="text"
+                    required
+                    value={organizationName}
+                    onChange={(e) => setOrganizationName(e.target.value)}
+                    placeholder={subdivision === 'organisation' ? 'e.g. Acme Corporation' : 'e.g. My Operations Hub'}
+                    className="block w-full pl-9 pr-3 py-2 rounded-xl text-xs sm:text-sm focus:outline-none bg-transparent placeholder:text-neutral-400 text-[#14251F]"
+                  />
                 </div>
-              )}
+              </div>
+            )}
 
+            {/* Grid 2 Columns: Password + Confirm Password */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* Password */}
               <div>
                 <label className="block text-xs font-semibold text-[#14251F] mb-1">
@@ -508,22 +557,22 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Terms of Service & Privacy Policy Agreement Checkbox */}
-            <div className="flex items-start space-x-2 pt-1 text-xs">
+            {/* Terms of Service Checkbox */}
+            <div className="flex items-center space-x-2 pt-1">
               <input
                 type="checkbox"
-                id="terms"
+                id="agree-terms"
                 required
                 checked={agreeTerms}
                 onChange={(e) => setAgreeTerms(e.target.checked)}
-                className="w-4 h-4 mt-0.5 rounded text-[#08745B] border-neutral-300 focus:ring-[#08745B]"
+                className="w-4 h-4 rounded text-[#08745B] focus:ring-[#08745B] border-neutral-300 cursor-pointer"
               />
-              <label htmlFor="terms" className="text-neutral-600 leading-tight select-none">
+              <label htmlFor="agree-terms" className="text-xs text-[#77847E] select-none">
                 I agree to the{' '}
                 <button
                   type="button"
                   onClick={() => setTermsModal('terms')}
-                  className="font-semibold text-[#08745B] hover:underline"
+                  className="text-[#08745B] font-semibold hover:underline"
                 >
                   Terms of Service
                 </button>{' '}
@@ -531,51 +580,50 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setTermsModal('privacy')}
-                  className="font-semibold text-[#08745B] hover:underline"
+                  className="text-[#08745B] font-semibold hover:underline"
                 >
                   Privacy Policy
                 </button>
               </label>
             </div>
 
-            {/* Primary Submit Button */}
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center py-2.5 px-4 rounded-xl text-sm font-bold text-white bg-[#08745B] hover:bg-[#119875] shadow-[0_4px_12px_rgba(8,116,91,0.25)] transition-all duration-150 disabled:opacity-50 mt-1 cursor-pointer"
+              className="w-full flex items-center justify-center py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold text-white bg-[#08745B] hover:bg-[#119875] shadow-[0_4px_12px_rgba(8,116,91,0.25)] transition-all duration-150 disabled:opacity-50"
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating Account...
+                  Sending Verification Code...
                 </>
               ) : (
                 <>
-                  <span>Register Account</span>
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  <span>Register &amp; Verify Code</span>
+                  <ArrowRight className="w-4 h-4 ml-1.5" />
                 </>
               )}
             </button>
           </form>
 
-          {/* Social Register Divider */}
+          {/* Or Divider */}
           <div className="relative my-3 text-center">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-neutral-200" />
             </div>
-            <span className="relative bg-white px-2.5 text-[11px] text-[#77847E] font-medium">
+            <span className="relative px-3 bg-white text-[11px] text-neutral-400 uppercase tracking-wider">
               Or register with
             </span>
           </div>
 
-          {/* Social Sign-in Buttons */}
-          <div className="grid grid-cols-2 gap-2.5">
-            {/* Google Button */}
+          {/* Social Auth Buttons */}
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => handleSocialAuth('google')}
               disabled={loading}
-              className="flex items-center justify-center px-3 py-2 border border-neutral-200 rounded-xl text-xs font-semibold text-neutral-700 bg-white hover:bg-neutral-50 shadow-2xs transition hover:border-neutral-300 cursor-pointer"
+              className="flex items-center justify-center px-3 py-2 border border-neutral-200 rounded-xl text-xs font-semibold text-neutral-700 bg-white hover:bg-neutral-50 shadow-2xs transition hover:border-neutral-300"
             >
               <svg className="w-3.5 h-3.5 mr-1.5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -586,12 +634,11 @@ export default function RegisterPage() {
               Google
             </button>
 
-            {/* Microsoft Button */}
             <button
               type="button"
               onClick={() => handleSocialAuth('microsoft')}
               disabled={loading}
-              className="flex items-center justify-center px-3 py-2 border border-neutral-200 rounded-xl text-xs font-semibold text-neutral-700 bg-white hover:bg-neutral-50 shadow-2xs transition hover:border-neutral-300 cursor-pointer"
+              className="flex items-center justify-center px-3 py-2 border border-neutral-200 rounded-xl text-xs font-semibold text-neutral-700 bg-white hover:bg-neutral-50 shadow-2xs transition hover:border-neutral-300"
             >
               <svg className="w-3.5 h-3.5 mr-1.5" viewBox="0 0 23 23">
                 <path fill="#f35325" d="M1 1h10v10H1z" />
@@ -604,8 +651,8 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        {/* Bottom: Already have an account? Login */}
-        <div className="text-center text-xs text-[#77847E] pt-2 border-t border-neutral-100 shrink-0">
+        {/* Bottom Switch to Login */}
+        <div className="pt-2 border-t border-neutral-100 shrink-0 text-center text-xs text-[#77847E]">
           <span>Already have an account? </span>
           <Link
             href="/login"
@@ -617,7 +664,111 @@ export default function RegisterPage() {
       </section>
 
       {/* ========================================================================= */}
-      {/* GOOGLE ACCOUNT OTP SIGN IN MODAL                                         */}
+      {/* MODAL 1: OTP VERIFICATION & IMMEDIATE WORKSPACE CREATION                  */}
+      {/* ========================================================================= */}
+      {showOtpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 w-full max-w-md overflow-hidden relative p-6">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#EDF6F1] text-[#08745B] flex items-center justify-center font-bold">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-[#14251F]">Verify Registration Code</h3>
+                  <p className="text-[11px] text-[#77847E]">Securing your account &amp; creating workspace</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOtpModal(false)}
+                className="text-neutral-400 hover:text-neutral-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-[#EDF6F1] border border-emerald-200 rounded-xl text-xs text-[#064B3B] space-y-1">
+              <div className="font-semibold flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#08745B]" />
+                <span>Verification Code Dispatched</span>
+              </div>
+              <p className="text-[11px] text-neutral-600 leading-relaxed">
+                We sent a 6-digit verification code to <strong>{email}</strong>
+                {phoneNumber ? ` and your phone ${getFullPhone()}` : ''}.
+              </p>
+            </div>
+
+            {otpError && (
+              <div className="mb-3 p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{otpError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleVerifyOtpAndCreateWorkspace} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#14251F] mb-1.5 text-center">
+                  Enter 6-Digit OTP Code
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  required
+                  autoFocus
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••••"
+                  className="block w-full py-2.5 text-center tracking-[0.5em] text-2xl font-mono rounded-xl border border-neutral-300 focus:outline-none focus:border-[#08745B] focus:ring-2 focus:ring-[#08745B]/20 transition bg-white text-[#14251F]"
+                />
+              </div>
+
+              <div className="text-xs text-neutral-500 bg-neutral-50 p-2.5 rounded-xl border border-neutral-200 space-y-0.5">
+                <div>🏢 <strong>Subdivision:</strong> <span className="capitalize">{subdivision}</span></div>
+                {(subdivision === 'organisation' || subdivision === 'customize') && organizationName && (
+                  <div>🏷️ <strong>Workspace:</strong> {organizationName}</div>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={otpVerifying || otpCode.length !== 6}
+                className="w-full flex items-center justify-center py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold text-white bg-[#08745B] hover:bg-[#119875] shadow-[0_4px_12px_rgba(8,116,91,0.25)] transition disabled:opacity-50"
+              >
+                {otpVerifying ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Verifying &amp; Creating Workspace...
+                  </>
+                ) : (
+                  'Verify & Enter Workspace'
+                )}
+              </button>
+
+              <div className="flex justify-between items-center text-xs text-[#77847E] pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowOtpModal(false)}
+                  className="hover:underline text-neutral-600"
+                >
+                  Edit registration details
+                </button>
+                <button
+                  type="button"
+                  disabled={otpCooldown > 0}
+                  onClick={handleResendOtp}
+                  className={`font-semibold ${otpCooldown > 0 ? 'text-neutral-400' : 'text-[#08745B] hover:underline'}`}
+                >
+                  {otpCooldown > 0 ? `Resend in ${otpCooldown}s` : 'Resend Code'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 2: GOOGLE SIGN IN OTP MODAL                                         */}
       {/* ========================================================================= */}
       {showGoogleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -633,30 +784,20 @@ export default function RegisterPage() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="font-bold text-[#14251F] text-base">Sign up with Google</h3>
-                  <p className="text-xs text-[#77847E]">to register your SEYAL account</p>
+                  <h3 className="font-bold text-[#14251F] text-base">Register with Google</h3>
+                  <p className="text-xs text-[#77847E]">Verified Google account registration</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowGoogleModal(false)}
-                className="text-neutral-400 hover:text-neutral-600 p-1.5 rounded-lg hover:bg-neutral-100 transition"
+                className="text-neutral-400 hover:text-neutral-600 p-1.5 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="p-5">
-              <div className="mb-3.5 p-3 bg-[#EDF6F1] border border-emerald-200 rounded-xl flex items-start space-x-2.5 text-xs text-[#064B3B]">
-                <Mail className="w-4 h-4 text-[#08745B] mt-0.5 shrink-0" />
-                <div>
-                  <span className="font-bold">Security Email Verification</span>
-                  <p className="text-[#08745B] text-[11px] mt-0.5 leading-relaxed">
-                    A secure 6-digit verification code will be sent to your Google email address from <strong className="font-mono">prabanprabanjan@gmail.com</strong>.
-                  </p>
-                </div>
-              </div>
-
               {googleError && (
                 <div className="mb-3 p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl">
                   {googleError}
@@ -669,97 +810,46 @@ export default function RegisterPage() {
                     <label className="block text-xs font-semibold text-[#14251F] mb-1">
                       Google Account Email Address
                     </label>
-                    <div className="relative rounded-xl border border-neutral-300 focus-within:border-[#08745B] focus-within:ring-2 focus-within:ring-[#08745B]/20 transition bg-white">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#77847E]">
-                        <Mail className="h-4 w-4" />
-                      </div>
-                      <input
-                        type="email"
-                        required
-                        autoFocus
-                        value={googleEmail}
-                        onChange={(e) => setGoogleEmail(e.target.value)}
-                        placeholder="yourname@gmail.com"
-                        className="block w-full pl-9 pr-3 py-2 rounded-xl text-sm focus:outline-none bg-transparent placeholder:text-neutral-400 text-[#14251F]"
-                      />
-                    </div>
+                    <input
+                      type="email"
+                      required
+                      autoFocus
+                      value={googleEmail}
+                      onChange={(e) => setGoogleEmail(e.target.value)}
+                      placeholder="yourname@gmail.com"
+                      className="block w-full px-3 py-2 rounded-xl border border-neutral-300 text-sm focus:outline-none focus:border-[#08745B] bg-white text-[#14251F]"
+                    />
                   </div>
-
                   <button
                     type="submit"
                     disabled={googleLoading}
-                    className="w-full flex items-center justify-center py-2.5 px-4 rounded-xl text-sm font-bold text-white bg-[#08745B] hover:bg-[#119875] shadow-[0_4px_12px_rgba(8,116,91,0.25)] transition-all duration-150 disabled:opacity-50"
+                    className="w-full py-2.5 px-4 rounded-xl text-sm font-bold text-white bg-[#08745B] hover:bg-[#119875] transition disabled:opacity-50"
                   >
-                    {googleLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Sending OTP...
-                      </>
-                    ) : (
-                      'Send OTP to Google Account'
-                    )}
+                    {googleLoading ? 'Sending Verification Code...' : 'Send OTP to Google Email'}
                   </button>
                 </form>
               ) : (
                 <form onSubmit={handleVerifyGoogleOtp} className="space-y-3">
-                  <div className="p-2.5 bg-[#EDF6F1] border border-emerald-200 rounded-xl text-xs text-[#064B3B] space-y-0.5">
-                    <div className="flex items-center space-x-1 font-bold text-[#08745B]">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>OTP Dispatched via Email</span>
-                    </div>
-                    <p className="text-neutral-600 text-[11px]">
-                      Enter the 6-digit verification code sent to <strong>{googleEmail}</strong>. Check your inbox.
-                    </p>
+                  <div className="p-2.5 bg-[#EDF6F1] border border-emerald-200 rounded-xl text-xs text-[#064B3B]">
+                    Enter the 6-digit code sent to <strong>{googleEmail}</strong>.
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-[#14251F] mb-1">
-                      Enter 6-Digit OTP
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      required
-                      autoFocus
-                      value={googleOtpCode}
-                      onChange={(e) => setGoogleOtpCode(e.target.value.replace(/\D/g, ''))}
-                      placeholder="••••••"
-                      className="block w-full px-3 py-2 text-center tracking-widest text-xl font-mono rounded-xl border border-neutral-300 focus:outline-none focus:border-[#08745B] focus:ring-2 focus:ring-[#08745B]/20 transition bg-white text-[#14251F]"
-                    />
-                  </div>
-
+                  <input
+                    type="text"
+                    maxLength={6}
+                    required
+                    autoFocus
+                    value={googleOtpCode}
+                    onChange={(e) => setGoogleOtpCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="••••••"
+                    className="block w-full py-2 text-center text-xl font-mono rounded-xl border border-neutral-300 focus:outline-none focus:border-[#08745B] bg-white text-[#14251F]"
+                  />
                   <button
                     type="submit"
                     disabled={googleLoading}
-                    className="w-full flex items-center justify-center py-2.5 px-4 rounded-xl text-sm font-bold text-white bg-[#08745B] hover:bg-[#119875] shadow-[0_4px_12px_rgba(8,116,91,0.25)] transition-all duration-150 disabled:opacity-50"
+                    className="w-full py-2.5 px-4 rounded-xl text-sm font-bold text-white bg-[#08745B] hover:bg-[#119875] transition disabled:opacity-50"
                   >
-                    {googleLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Verifying Google Account...
-                      </>
-                    ) : (
-                      'Verify & Create Account'
-                    )}
+                    {googleLoading ? 'Verifying...' : 'Verify &amp; Create Workspace'}
                   </button>
-
-                  <div className="flex justify-between items-center text-xs text-[#77847E] pt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => { setGoogleOtpSent(false); setGoogleOtpCode(''); }}
-                      className="hover:underline text-neutral-600 font-medium"
-                    >
-                      Use different email
-                    </button>
-                    <button
-                      type="button"
-                      disabled={googleCooldown > 0}
-                      onClick={() => handleSendGoogleOtp()}
-                      className={`font-semibold ${googleCooldown > 0 ? 'text-neutral-400' : 'text-[#08745B] hover:underline'}`}
-                    >
-                      {googleCooldown > 0 ? `Resend in ${googleCooldown}s` : 'Resend OTP'}
-                    </button>
-                  </div>
                 </form>
               )}
             </div>
@@ -768,64 +858,38 @@ export default function RegisterPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* TERMS & PRIVACY MODAL                                                    */}
+      {/* MODAL 3: TERMS & PRIVACY                                                  */}
       {/* ========================================================================= */}
       {termsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 w-full max-w-lg overflow-hidden p-6">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
-              <div className="flex items-center space-x-2 text-[#08745B]">
-                {termsModal === 'terms' ? <FileText className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
-                <h3 className="font-bold text-lg text-[#14251F]">
-                  {termsModal === 'terms' ? 'Terms of Service' : 'Privacy Policy'}
-                </h3>
-              </div>
+          <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 w-full max-w-lg overflow-hidden p-6 max-h-[80vh] flex flex-col justify-between">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 mb-3">
+              <h3 className="font-bold text-base text-[#14251F]">
+                {termsModal === 'terms' ? 'Terms of Service' : 'Privacy Policy'}
+              </h3>
               <button
                 type="button"
                 onClick={() => setTermsModal(null)}
-                className="text-neutral-400 hover:text-neutral-600 p-1 rounded-lg hover:bg-neutral-100"
+                className="text-neutral-400 hover:text-neutral-600"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
-
-            <div className="py-4 text-xs text-neutral-600 space-y-3 max-h-[60vh] overflow-y-auto leading-relaxed">
-              {termsModal === 'terms' ? (
-                <>
-                  <p>
-                    <strong>1. Acceptance of Terms:</strong> By creating an account on SEYAL, you agree to comply with and be bound by these Terms of Service.
-                  </p>
-                  <p>
-                    <strong>2. Workspace Conduct:</strong> SEYAL provides an institutional work assignment and accountability tracking platform. Users agree not to misuse workspaces or attempt unauthorized access.
-                  </p>
-                  <p>
-                    <strong>3. Data Ownership:</strong> Organization and workspace data remain the property of the tenant institution or user.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p>
-                    <strong>1. Information Collection:</strong> We collect minimal account data necessary for workspace authentication, role verification, and notification delivery.
-                  </p>
-                  <p>
-                    <strong>2. Communication Security:</strong> Verification codes and status updates are delivered securely through authorized email gateways.
-                  </p>
-                  <p>
-                    <strong>3. Confidentiality:</strong> Your enterprise data and task progress metrics are protected with modern encryption and access control protocols.
-                  </p>
-                </>
-              )}
+            <div className="overflow-y-auto text-xs text-[#77847E] space-y-2.5 pr-1">
+              <p>
+                By registering for a SEYAL account, you agree to access high-performance collaborative workspace tools in compliance with enterprise security protocols.
+              </p>
+              <p>
+                Your personal and organisational data is secured with strict role-based access control (RBAC), multi-subdivision boundaries, and cryptographic session management.
+              </p>
             </div>
-
-            <div className="pt-3 border-t border-neutral-100 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setTermsModal(null)}
-                className="px-4 py-2 rounded-xl bg-[#08745B] text-white text-xs font-bold hover:bg-[#119875] transition"
-              >
-                Understood &amp; Close
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setTermsModal(null)}
+              className="mt-4 w-full py-2 rounded-xl bg-[#08745B] text-white text-xs font-bold hover:bg-[#119875] transition"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}

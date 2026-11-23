@@ -71,7 +71,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user) {
-      router.push('/subdivisions');
+      router.push('/');
     }
   }, [user, router]);
 
@@ -113,7 +113,7 @@ export default function LoginPage() {
         const res = await api.login({ email, password });
         await loginUser(res.tokens, res.default_workspace_id);
       }
-      router.push('/subdivisions');
+      router.push('/');
     } catch (err: any) {
       setError(err?.data?.error || err.message || 'Authentication failed. Please check your credentials.');
     } finally {
@@ -160,7 +160,7 @@ export default function LoginPage() {
       if (res.is_new_user) {
         router.push('/onboarding');
       } else {
-        router.push('/subdivisions');
+        router.push('/');
       }
     } catch (err: any) {
       setError(err?.data?.error || err.message || 'Invalid or expired OTP code');
@@ -203,7 +203,7 @@ export default function LoginPage() {
       if (res.is_new_user) {
         router.push('/onboarding');
       } else {
-        router.push('/subdivisions');
+        router.push('/');
       }
     } catch (err: any) {
       setError(err?.data?.error || err.message || 'Invalid or expired OTP');
@@ -262,7 +262,7 @@ export default function LoginPage() {
       });
       await loginUser(res.tokens, res.default_workspace_id);
       setShowGoogleModal(false);
-      router.push('/subdivisions');
+      router.push('/');
     } catch (err: any) {
       setGoogleError(err?.data?.error || err.message || 'Invalid or expired OTP code');
     } finally {
@@ -312,7 +312,7 @@ export default function LoginPage() {
 
       const res = await api.socialAuth(provider === 'microsoft' ? 'google' : provider, mockSocialPayload[provider]);
       await loginUser(res.tokens, res.default_workspace_id);
-      router.push('/subdivisions');
+      router.push('/');
     } catch (err: any) {
       setError(err?.data?.error || err.message || `${provider} authentication failed`);
     } finally {
