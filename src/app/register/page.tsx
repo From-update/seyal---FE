@@ -56,6 +56,7 @@ export default function RegisterPage() {
   // OTP Verification Modal states
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpCode, setOtpCode] = useState('');
+  const [devOtpHint, setDevOtpHint] = useState('');
   const [otpCooldown, setOtpCooldown] = useState(0);
   const [otpVerifying, setOtpVerifying] = useState(false);
   const [otpError, setOtpError] = useState('');
@@ -129,12 +130,15 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const fullPhone = getFullPhone();
-      await api.requestOtp({
+      const res = await api.requestOtp({
         email: email.trim().toLowerCase(),
         phone: fullPhone || undefined,
         purpose: 'register',
       });
 
+      if (res?.dev_otp) {
+        setDevOtpHint(res.dev_otp);
+      }
       setShowOtpModal(true);
       setOtpError('');
       setOtpCode('');
@@ -183,12 +187,16 @@ export default function RegisterPage() {
     setOtpError('');
     try {
       const fullPhone = getFullPhone();
-      await api.requestOtp({
+      const res = await api.requestOtp({
         email: email.trim().toLowerCase(),
         phone: fullPhone || undefined,
         purpose: 'register',
       });
+      if (res?.dev_otp) {
+        setDevOtpHint(res.dev_otp);
+      }
       setOtpCooldown(45);
+      setOtpError('');
     } catch (err: any) {
       setOtpError(err?.data?.error || err.message || 'Failed to resend code');
     }
@@ -698,6 +706,27 @@ export default function RegisterPage() {
                 {phoneNumber ? ` and your phone ${getFullPhone()}` : ''}.
               </p>
             </div>
+
+            {devOtpHint && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center space-x-1.5 font-bold text-amber-900">
+                    <span>⚡ Development / Fast Test OTP:</span>
+                    <span className="font-mono text-sm tracking-widest text-[#08745B] bg-white px-2 py-0.5 rounded border border-emerald-300 font-extrabold">{devOtpHint}</span>
+                  </div>
+                  <div className="text-[10px] text-amber-700 mt-1">
+                    (Email dispatched. Check Spam/Junk folder if delayed in institutional inbox)
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOtpCode(devOtpHint)}
+                  className="px-2.5 py-1 text-[11px] font-bold bg-[#08745B] hover:bg-[#119875] text-white rounded-lg transition shrink-0 ml-2"
+                >
+                  Auto-fill
+                </button>
+              </div>
+            )}
 
             {otpError && (
               <div className="mb-3 p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-1.5">
