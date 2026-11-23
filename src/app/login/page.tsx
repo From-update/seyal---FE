@@ -71,7 +71,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user) {
-      router.push('/');
+      router.push('/subdivisions');
     }
   }, [user, router]);
 
@@ -113,7 +113,7 @@ export default function LoginPage() {
         const res = await api.login({ email, password });
         await loginUser(res.tokens, res.default_workspace_id);
       }
-      router.push('/');
+      router.push('/subdivisions');
     } catch (err: any) {
       setError(err?.data?.error || err.message || 'Authentication failed. Please check your credentials.');
     } finally {
@@ -160,7 +160,7 @@ export default function LoginPage() {
       if (res.is_new_user) {
         router.push('/onboarding');
       } else {
-        router.push('/');
+        router.push('/subdivisions');
       }
     } catch (err: any) {
       setError(err?.data?.error || err.message || 'Invalid or expired OTP code');
@@ -203,7 +203,7 @@ export default function LoginPage() {
       if (res.is_new_user) {
         router.push('/onboarding');
       } else {
-        router.push('/');
+        router.push('/subdivisions');
       }
     } catch (err: any) {
       setError(err?.data?.error || err.message || 'Invalid or expired OTP');
@@ -233,7 +233,7 @@ export default function LoginPage() {
     try {
       const res = await api.requestOtp({ email: cleanEmail, provider: 'google' });
       setGoogleOtpSent(true);
-      setGoogleCooldown(res.cooldown_seconds || 45);
+      setEmailCooldown(res.cooldown_seconds || 45);
       setGoogleEmailSentSuccess(!!res.email_sent);
       setGoogleOtpCode('');
     } catch (err: any) {
@@ -262,7 +262,7 @@ export default function LoginPage() {
       });
       await loginUser(res.tokens, res.default_workspace_id);
       setShowGoogleModal(false);
-      router.push('/');
+      router.push('/subdivisions');
     } catch (err: any) {
       setGoogleError(err?.data?.error || err.message || 'Invalid or expired OTP code');
     } finally {
@@ -312,7 +312,7 @@ export default function LoginPage() {
 
       const res = await api.socialAuth(provider === 'microsoft' ? 'google' : provider, mockSocialPayload[provider]);
       await loginUser(res.tokens, res.default_workspace_id);
-      router.push('/');
+      router.push('/subdivisions');
     } catch (err: any) {
       setError(err?.data?.error || err.message || `${provider} authentication failed`);
     } finally {
@@ -844,14 +844,12 @@ export default function LoginPage() {
             </Link>
           </div>
           <div className="text-center text-[11px] text-neutral-400">
-            <a
-              href="http://127.0.0.1:8001/admin/"
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              href="/superadmin"
               className="hover:text-[#08745B] hover:underline inline-flex items-center gap-1 transition"
             >
               <span>🔒</span> Superadmin Portal
-            </a>
+            </Link>
           </div>
         </div>
       </section>

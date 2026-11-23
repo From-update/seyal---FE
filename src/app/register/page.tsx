@@ -63,7 +63,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (user) {
-      router.push('/');
+      router.push('/subdivisions');
     }
   }, [user, router]);
 
@@ -119,7 +119,7 @@ export default function RegisterPage() {
       });
 
       await loginUser(res.tokens, res.default_workspace_id);
-      router.push('/');
+      router.push('/subdivisions');
     } catch (err: any) {
       setError(err?.data?.error || err.message || 'Registration failed. Please check your details.');
     } finally {
@@ -175,7 +175,7 @@ export default function RegisterPage() {
       });
       await loginUser(res.tokens, res.default_workspace_id);
       setShowGoogleModal(false);
-      router.push('/');
+      router.push('/subdivisions');
     } catch (err: any) {
       setGoogleError(err?.data?.error || err.message || 'Invalid or expired OTP code');
     } finally {
@@ -200,7 +200,7 @@ export default function RegisterPage() {
       };
       const res = await api.socialAuth('google', mockSocialPayload);
       await loginUser(res.tokens, res.default_workspace_id);
-      router.push('/');
+      router.push('/subdivisions');
     } catch (err: any) {
       setError(err?.data?.error || err.message || `${provider} registration failed`);
     } finally {

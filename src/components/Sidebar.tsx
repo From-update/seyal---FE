@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/authContext';
 import { api } from '@/lib/api';
 import {
@@ -20,6 +21,9 @@ import {
   Trash2,
   Flame,
   ShieldCheck,
+  FolderKanban,
+  LayoutDashboard,
+  Layers,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -183,7 +187,25 @@ export function Sidebar({
               ))}
             </div>
 
-            <div className="border-t border-gray-100 mt-1 pt-1">
+            <div className="border-t border-gray-100 mt-1 pt-1 space-y-0.5">
+              <Link
+                href="/subdivisions"
+                className="w-full text-left px-3 py-1.5 hover:bg-emerald-50 flex items-center space-x-2 text-emerald-800 font-semibold"
+              >
+                <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Switch Subdivision Hub</span>
+              </Link>
+
+              {(user?.is_superuser || user?.is_staff) && (
+                <Link
+                  href="/superadmin"
+                  className="w-full text-left px-3 py-1.5 hover:bg-amber-50 flex items-center space-x-2 text-amber-900 font-semibold"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Superadmin Portal</span>
+                </Link>
+              )}
+
               <button
                 onClick={() => {
                   setShowWorkspaceMenu(false);
@@ -211,6 +233,38 @@ export function Sidebar({
             <p className="text-[10px] text-blue-700/80 mt-0.5 leading-tight">
               Private to you · Organization members cannot see your content
             </p>
+          </div>
+        )}
+
+        {/* Organisation Enterprise Navigation (Executive, Projects, Directory) */}
+        {!isPersonal && (
+          <div className="space-y-0.5 mb-2 pb-2 border-b border-neutral-200/70">
+            <div className="px-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+              Organisation Hub
+            </div>
+            <button
+              onClick={() => { setCurrentView('org-overview'); setSelectedPageId(null); setSelectedDatabaseId(null); }}
+              className={`w-full flex items-center space-x-2.5 px-2.5 py-1.5 rounded-md transition ${currentView === 'org-overview' ? 'bg-neutral-200/80 font-bold text-[#08745B]' : 'hover:bg-neutral-200/50 text-gray-700'}`}
+            >
+              <LayoutDashboard className="w-4 h-4 text-[#08745B]" />
+              <span>Executive Overview</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentView('projects'); setSelectedPageId(null); setSelectedDatabaseId(null); }}
+              className={`w-full flex items-center space-x-2.5 px-2.5 py-1.5 rounded-md transition ${currentView === 'projects' ? 'bg-neutral-200/80 font-bold text-emerald-800' : 'hover:bg-neutral-200/50 text-gray-700'}`}
+            >
+              <FolderKanban className="w-4 h-4 text-emerald-600" />
+              <span>Project Pipeline</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentView('team'); setSelectedPageId(null); setSelectedDatabaseId(null); }}
+              className={`w-full flex items-center space-x-2.5 px-2.5 py-1.5 rounded-md transition ${currentView === 'team' ? 'bg-neutral-200/80 font-bold text-indigo-800' : 'hover:bg-neutral-200/50 text-gray-700'}`}
+            >
+              <Users className="w-4 h-4 text-indigo-600" />
+              <span>Team Directory</span>
+            </button>
           </div>
         )}
 

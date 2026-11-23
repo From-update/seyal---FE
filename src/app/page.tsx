@@ -21,6 +21,9 @@ import { GmailModal } from '@/components/GmailModal';
 import { ClaudeAssistantModal } from '@/components/ClaudeAssistantModal';
 import { BirthdayRemindersModal } from '@/components/BirthdayRemindersModal';
 import { ApiIntegrationsModal } from '@/components/ApiIntegrationsModal';
+import { OrganisationDashboard } from '@/components/OrganisationDashboard';
+import { ProjectManagement } from '@/components/ProjectManagement';
+import { OrganisationTeamManager } from '@/components/OrganisationTeamManager';
 
 export default function AppDashboard() {
   const router = useRouter();
@@ -64,6 +67,12 @@ export default function AppDashboard() {
 
   const getViewTitle = () => {
     switch (currentView) {
+      case 'org-overview':
+        return 'Executive Overview';
+      case 'projects':
+        return 'Project Pipeline';
+      case 'team':
+        return 'Team Directory & Roles';
       case 'page':
         return 'Document';
       case 'tasks':
@@ -127,6 +136,27 @@ export default function AppDashboard() {
         />
 
         <main className="flex-1 flex overflow-hidden">
+          {currentView === 'org-overview' && (
+            <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
+              <OrganisationDashboard
+                onNavigateToProjects={() => setCurrentView('projects')}
+                onNavigateToTeam={() => setCurrentView('team')}
+              />
+            </div>
+          )}
+
+          {currentView === 'projects' && (
+            <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
+              <ProjectManagement />
+            </div>
+          )}
+
+          {currentView === 'team' && (
+            <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
+              <OrganisationTeamManager />
+            </div>
+          )}
+
           {currentView === 'page' && selectedPageId && (
             <BlockEditor pageId={selectedPageId} />
           )}

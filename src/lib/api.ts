@@ -57,7 +57,7 @@ export async function apiRequest<T = any>(
   }
 
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
-  
+
   const response = await fetch(url, {
     ...options,
     headers,
@@ -110,6 +110,8 @@ export async function apiRequest<T = any>(
 
 export const api = {
   // Auth
+  register: (payload: { email: string; password: string; name?: string; phone?: string; role?: string }) =>
+    apiRequest('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   register: (payload: {
     email: string;
     password: string;
@@ -318,5 +320,35 @@ export const api = {
     client_id?: string;
     key_id?: string;
   }) => apiRequest('/integrations/test', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // Subdivisions (Organisation, Personal, Freelancer, Customize)
+  getSubdivisions: () => apiRequest('/subdivisions'),
+
+  // Superadmin (Product Owner)
+  getSuperadminAnalytics: () => apiRequest('/superadmin/analytics'),
+  getSuperadminOrganisations: () => apiRequest('/superadmin/organisations'),
+  createSuperadminOrganisation: (payload: any) =>
+    apiRequest('/superadmin/organisations', { method: 'POST', body: JSON.stringify(payload) }),
+  updateSuperadminOrganisation: (id: string, payload: any) =>
+    apiRequest(`/superadmin/organisations/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+
+  // Organisation Subdivision
+  getOrgOverview: (orgId: string) => apiRequest(`/organisations/${orgId}/overview`),
+  getOrgProjects: (orgId: string, filters?: { onboarding?: string; lifecycle?: string }) => {
+    const q = new URLSearchParams();
+    if (filters?.onboarding) q.set('onboarding', filters.onboarding);
+    if (filters?.lifecycle) q.set('lifecycle', filters.lifecycle);
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    return apiRequest(`/organisations/${orgId}/projects${qs}`);
+  },
+  createOrgProject: (orgId: string, payload: any) =>
+    apiRequest(`/organisations/${orgId}/projects`, { method: 'POST', body: JSON.stringify(payload) }),
+  getProject: (projectId: string) => apiRequest(`/projects/${projectId}`),
+  updateProject: (projectId: string, payload: any) =>
+    apiRequest(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  getOrgUsers: (orgId: string) => apiRequest(`/organisations/${orgId}/users`),
+  createOrgUser: (orgId: string, payload: any) =>
+    apiRequest(`/organisations/${orgId}/users`, { method: 'POST', body: JSON.stringify(payload) }),
+  getOrgReports: (orgId: string) => apiRequest(`/organisations/${orgId}/reports`),
 };
 
