@@ -19,6 +19,7 @@ import {
   CreditCard,
   Trash2,
   Flame,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -412,6 +413,23 @@ export function Sidebar({
           <Settings className="w-3.5 h-3.5 text-gray-500" />
           <span>{t.settings}</span>
         </button>
+
+        {user?.is_superuser && (
+          <a
+            href="http://127.0.0.1:8001/admin/"
+            target="_blank"
+            rel="noreferrer"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-[#08745B] font-semibold transition border border-emerald-200/70"
+          >
+            <div className="flex items-center space-x-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#08745B]" />
+              <span>Superadmin Console</span>
+            </div>
+            <span className="text-[9px] bg-[#08745B] text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+              Admin
+            </span>
+          </a>
+        )}
       </div>
     </aside>
   );

@@ -832,15 +832,27 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Bottom: Register link */}
-        <div className="text-center text-xs text-[#77847E] pt-2 border-t border-neutral-100 shrink-0">
-          <span>Don&apos;t have an account? </span>
-          <Link
-            href="/register"
-            className="font-bold text-[#08745B] hover:text-[#119875] hover:underline"
-          >
-            Register
-          </Link>
+        {/* Bottom: Register & Superadmin link */}
+        <div className="pt-2 border-t border-neutral-100 shrink-0 space-y-1">
+          <div className="text-center text-xs text-[#77847E]">
+            <span>Don&apos;t have an account? </span>
+            <Link
+              href="/register"
+              className="font-bold text-[#08745B] hover:text-[#119875] hover:underline"
+            >
+              Register
+            </Link>
+          </div>
+          <div className="text-center text-[11px] text-neutral-400">
+            <a
+              href="http://127.0.0.1:8001/admin/"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-[#08745B] hover:underline inline-flex items-center gap-1 transition"
+            >
+              <span>🔒</span> Superadmin Portal
+            </a>
+          </div>
         </div>
       </section>
 
