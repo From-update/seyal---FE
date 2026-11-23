@@ -36,6 +36,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [phonePrefix, setPhonePrefix] = useState('+91');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [role, setRole] = useState('');
   const [accountType, setAccountType] = useState<'personal' | 'company' | 'organization'>('personal');
   const [organizationName, setOrganizationName] = useState('');
   const [password, setPassword] = useState('');
@@ -112,6 +113,7 @@ export default function RegisterPage() {
         email: email.trim().toLowerCase(),
         password,
         phone: fullPhone || undefined,
+        role: role || undefined,
         account_type: accountType,
         organization_name: (accountType !== 'personal' && organizationName.trim()) ? organizationName.trim() : undefined,
       });
