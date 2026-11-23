@@ -508,19 +508,19 @@ export default function LoginPage() {
               {/* Email Address */}
               <div>
                 <label className="block text-xs font-semibold text-[#14251F] mb-1">
-                  Email Address
+                  Email Address or Username
                 </label>
                 <div className="relative rounded-xl border border-neutral-300 focus-within:border-[#08745B] focus-within:ring-2 focus-within:ring-[#08745B]/20 transition bg-white">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#77847E]">
                     <Mail className="h-4 w-4" />
                   </div>
                   <input
-                    type="email"
+                    type="text"
                     required
                     autoFocus
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@lexiontech.com or you@seyal.app"
+                    placeholder="admin or you@seyal.app"
                     className="block w-full pl-9 pr-3 py-2 rounded-xl text-sm focus:outline-none bg-transparent placeholder:text-neutral-400 text-[#14251F]"
                   />
                 </div>
